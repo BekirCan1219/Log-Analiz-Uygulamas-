@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>LogWatch Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b0f17;
+      color: #e6e6e6;
+    }
+
+    header {
+      padding: 16px 20px;
+      background: #121a2a;
+      border-bottom: 1px solid #22314f;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    header .links a {
+      margin-left: 10px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid #2b3b60;
+      background: #0f1626;
+      color: #9ad;
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .container {
+      padding: 16px;
+    }
+
+    .card {
+      background: #121a2a;
+      border: 1px solid #22314f;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    select, button {
+      background: #0f1626;
+      color: #e6e6e6;
+      border: 1px solid #2b3b60;
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      filter: brightness(1.15);
+    }
+
+    .kpi {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .kpi .box {
+      background: #0f1626;
+      border: 1px solid #22314f;
+      border-radius: 12px;
+      padding: 10px 14px;
+      min-width: 160px;
+    }
+
+    .kpi .num {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 14px;
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #22314f;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #b9c3d6;
+    }
+
+    .right {
+      text-align: right;
+    }
+
+    .chip {
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #0f1626;
+      border: 1px solid #2b3b60;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #9aa4b2;
+    }
+
+    canvas {
+      max-height: 280px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>LogWatch Dashboard</h1>
+  <div class="links">
+    <a href="/api/ingest/upload" target="_blank">Upload</a>
+    <a href="/api/search?limit=20" target="_blank">Search API</a>
+    <a href="/api/alerts/rules" target="_blank">Rules</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Controls -->
+  <div class="card">
+    <h3>Kontroller</h3>
+    <div class="controls">
+      <label class="small">Zaman (saat):</label>
+      <select id="hours">
+        <option value="1">1</option>
+        <option value="6">6</option>
+        <option value="12">12</option>
+        <option value="24" selected>24</option>
+        <option value="48">48</option>
+      </select>
+
+      <button id="refreshBtn">Yenile</button>
+      <button id="runOnceBtn">Alarm Motoru (Run Once)</button>
+      <span class="small" id="runOnceStatus"></span>
+    </div>
+
+    <div class="kpi">
+      <div class="box">
+        <div class="small">Toplam Log</div>
+        <div class="num" id="totalLogs">-</div>
+      </div>
+      <div class="box">
+        <div class="small">Open Alarm</div>
+        <div class="num" id="openAlerts">-</div>
+      </div>
+      <div class="box">
+        <div class="small">Range</div>
+        <div class="small" id="rangeText">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts + tables -->
+  <div class="grid">
+    <div class="card">
+      <h3>Log Yoğunluğu (Time Series)</h3>
+      <canvas id="volumeChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Top Services</h3>
+      <table>
+        <thead>
+          <tr><th>Service</th><th class="right">Count</th></tr>
+        </thead>
+        <tbody id="servicesBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Top Source IP</h3>
+      <table>
+        <thead>
+          <tr><th>IP</th><th class="right">Count</th></tr>
+        </thead>
+        <tbody id="ipsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Open Alarmlar</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Zaman</th>
+            <th>Alarm</th>
+            <th>Key</th>
+            <th class="right">Count</th>
+            <th>Aksiyon</th>
+          </tr>
+        </thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const hoursEl = document.getElementById("hours");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const runOnceBtn = document.getElementById("runOnceBtn");
+  const runOnceStatus = document.getElementById("runOnceStatus");
+
+  const totalLogsEl = document.getElementById("totalLogs");
+  const openAlertsEl = document.getElementById("openAlerts");
+  const rangeTextEl = document.getElementById("rangeText");
+
+  const servicesBody = document.getElementById("servicesBody");
+  const ipsBody = document.getElementById("ipsBody");
+  const alertsBody = document.getElementById("alertsBody");
+
+  let volumeChart = null;
+
+  async function fetchJSON(url, opts={}) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  function clear(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+  }
+
+  async function loadDashboard() {
+    const hours = hoursEl.value;
+    const bucket = Number(hours) <= 6 ? "minute" : "hour";
+
+    const summary = await fetchJSON(`/api/metrics/summary?hours=${hours}`);
+    totalLogsEl.textContent = summary.total;
+    rangeTextEl.textContent = summary.range.from + " → " + summary.range.to;
+
+    const ts = await fetchJSON(`/api/metrics/timeseries?hours=${hours}&bucket=${bucket}`);
+    const labels = ts.data.map(x => new Date(x.t).toLocaleString());
+    const values = ts.data.map(x => x.c);
+
+    if (!volumeChart) {
+      volumeChart = new Chart(document.getElementById("volumeChart"), {
+        type: "line",
+        data: { labels, datasets: [{ label: "Log Count", data: values }] },
+        options: { responsive: true }
+      });
+    } else {
+      volumeChart.data.labels = labels;
+      volumeChart.data.datasets[0].data = values;
+      volumeChart.update();
+    }
+
+    clear(servicesBody);
+    summary.top_services.forEach(s => {
+      servicesBody.insertAdjacentHTML("beforeend",
+        `<tr><td>${s.service}</td><td class="right">${s.count}</td></tr>`
+      );
+    });
+
+    clear(ipsBody);
+    summary.top_ips.forEach(ip => {
+      ipsBody.insertAdjacentHTML("beforeend",
+        `<tr><td>${ip.src_ip}</td><td class="right">${ip.count}</td></tr>`
+      );
+    });
+
+    const alerts = await fetchJSON(`/api/alerts?status=open`);
+    openAlertsEl.textContent = alerts.data.length;
+
+    clear(alertsBody);
+    alerts.data.forEach(a => {
+      alertsBody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td class="small">${new Date(a.alert_time).toLocaleString()}</td>
+          <td><b>${a.title}</b></td>
+          <td><span class="chip">${a.group_key}</span></td>
+          <td class="right">${a.event_count}</td>
+          <td>
+            <button onclick="ack(${a.id})">Ack</button>
+            <button onclick="closeAlert(${a.id})">Close</button>
+          </td>
+        </tr>
+      `);
+    });
+  }
+
+  async function ack(id) {
+    await fetchJSON(`/api/alerts/${id}/ack`, { method: "POST" });
+    loadDashboard();
+  }
+
+  async function closeAlert(id) {
+    await fetchJSON(`/api/alerts/${id}/close`, { method: "POST" });
+    loadDashboard();
+  }
+
+  refreshBtn.onclick = loadDashboard;
+
+  runOnceBtn.onclick = async () => {
+    runOnceStatus.textContent = "çalışıyor...";
+    try {
+      const r = await fetchJSON(`/api/alerts/run-once`, { method: "POST" });
+      runOnceStatus.textContent = "created=" + r.created;
+      loadDashboard();
+    } catch (e) {
+      alert(e.message);
+      runOnceStatus.textContent = "hata";
+    }
+  };
+
+  loadDashboard();
+</script>
+
+</body>
+</html>
