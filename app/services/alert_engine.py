@@ -3,10 +3,14 @@ import json
 from datetime import datetime, timedelta
 from sqlalchemy import func, desc
 
+from flask import current_app
+
 from ..extensions import db
 from ..models.log_event import LogEvent
 from ..models.alert_rule import AlertRule
 from ..models.alert import Alert
+
+from .alert_actions_runner import run_actions_for_alert
 
 
 class AlertEngine:
@@ -153,3 +157,13 @@ class AlertEngine:
             status="open"
         )
         db.session.add(al)
+
+        # ✅ commit run_once sonunda olduğu için ID'yi şimdi üret
+        db.session.flush()
+
+        # ✅ aksiyon tetikle (email/webhook)
+        try:
+            run_actions_for_alert(al, rule, current_app.config)
+        except Exception:
+            # aksiyon patlarsa engine'i düşürme
+            pass

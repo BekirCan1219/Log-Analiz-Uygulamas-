@@ -4,22 +4,25 @@ from ..extensions import db
 class Alert(db.Model):
     __tablename__ = "alerts"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True)
 
-    rule_id = db.Column(db.Integer, db.ForeignKey("alert_rules.id"), nullable=False, index=True)
-    rule = db.relationship("AlertRule")
+    rule_id = db.Column(db.Integer, nullable=False, index=True)
 
-    alert_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-    severity = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="open", index=True)  # open/ack/closed
+    severity = db.Column(db.String(20), nullable=False, default="medium", index=True)
 
-    title = db.Column(db.String(250), nullable=False)
-    description = db.Column(db.Text)
+    title = db.Column(db.String(255), nullable=False)
+    group_key = db.Column(db.String(255), nullable=True, index=True)
 
-    # aynı alarmı spamlememek için
-    group_key = db.Column(db.String(200), index=True)
+    # yeni alanlar
+    details_json = db.Column(db.Text, nullable=True)  # MSSQL: NVARCHAR(MAX)
+    window_from = db.Column(db.DateTime, nullable=True)  # MSSQL: DATETIME2
+    window_to = db.Column(db.DateTime, nullable=True)    # MSSQL: DATETIME2
 
-    event_count = db.Column(db.Integer, nullable=False)
-    first_seen = db.Column(db.DateTime)
-    last_seen = db.Column(db.DateTime)
+    first_seen = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, nullable=True, default=datetime.utcnow, index=True)
 
-    status = db.Column(db.String(20), default="open", nullable=False)  # open/ack/closed
+    hit_count = db.Column(db.Integer, nullable=False, default=1)
+    event_id = db.Column(db.Integer, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)

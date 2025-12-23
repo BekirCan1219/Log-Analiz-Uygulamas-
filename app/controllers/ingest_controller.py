@@ -8,27 +8,18 @@ svc = IngestService()
 
 @ingest_bp.get("/upload")
 def upload_page():
-    # UI sayfası
     return render_template("upload.html")
 
 @ingest_bp.post("/upload")
 def upload_file():
-    """
-    UI üzerinden dosya yükleme:
-    - file: log dosyası
-    - source: kaynak adı (nginx-web1)
-    - source_type: nginx/auth/suricata/app
-    - hint: nginx_access | linux_auth | suricata_eve
-    """
     f = request.files.get("file")
     source = request.form.get("source", "manual-upload")
     source_type = request.form.get("source_type", "app")
-    hint = request.form.get("hint")
+    hint = request.form.get("hint") or None  # boş string gelirse None
 
     if not f:
         return jsonify({"success": False, "error": "file is required"}), 400
 
-    # satır satır ingest
     inserted = 0
     failed = 0
     for line in f.stream.read().decode("utf-8", errors="ignore").splitlines():
@@ -45,9 +36,6 @@ def upload_file():
 
 @ingest_bp.post("/event")
 def ingest_event():
-    """
-    JSON ile tek event ingest
-    """
     try:
         payload = IngestEventIn(**request.get_json(force=True))
     except ValidationError as e:

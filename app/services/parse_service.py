@@ -7,32 +7,107 @@ NGINX_ACCESS_RE = re.compile(
     r'"(?P<method>\S+) (?P<url>\S+) \S+" (?P<status>\d{3}) (?P<size>\d+)'
 )
 
+def _try_parse_iso_datetime(v):
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, (int, float)):
+        # epoch saniye vs. olabilir (opsiyonel)
+        try:
+            return datetime.utcfromtimestamp(v)
+        except Exception:
+            return None
+    if isinstance(v, str):
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            return None
+    return None
+
+
+def parse_json_auto(raw: str):
+    """
+    JSON line gönderen client'lar için fallback parser.
+    Senin testinde raw_text içine gömülen JSON'lar burada yakalanacak.
+    """
+    s = (raw or "").strip()
+    if not s.startswith("{"):
+        return None
+    try:
+        obj = json.loads(s)
+    except Exception:
+        return None
+
+    if not isinstance(obj, dict):
+        return None
+
+    # event_time alanı farklı isimlerle gelebilir
+    event_time = (
+        _try_parse_iso_datetime(obj.get("event_time")) or
+        _try_parse_iso_datetime(obj.get("@timestamp")) or
+        _try_parse_iso_datetime(obj.get("timestamp")) or
+        datetime.utcnow()
+    )
+
+    extra = obj.get("extra_json") if isinstance(obj.get("extra_json"), dict) else obj.get("extra")
+    if extra is None:
+        extra = {}
+
+    # bazı client'lar extra_json'u string yollayabilir
+    if isinstance(extra, str):
+        try:
+            extra = json.loads(extra)
+        except Exception:
+            extra = {"_raw_extra": extra}
+
+    return {
+        "event_time": event_time,
+        "service": obj.get("service"),
+        "category": obj.get("category"),
+        "event_type": obj.get("event_type"),
+        "level": obj.get("level"),
+        "src_ip": obj.get("src_ip"),
+        "dst_ip": obj.get("dst_ip"),
+        "src_port": obj.get("src_port"),
+        "dst_port": obj.get("dst_port"),
+        "http_method": obj.get("http_method"),
+        "url": obj.get("url"),
+        "http_status": obj.get("http_status"),
+        "username": obj.get("username") or (extra.get("username") if isinstance(extra, dict) else None),
+        "message": obj.get("message"),
+        "extra": extra
+    }
+
+
 def parse_nginx_access(raw: str):
     m = NGINX_ACCESS_RE.search(raw)
     if not m:
         return None
 
-    # NGINX time örn: 10/Oct/2000:13:55:36 +0000
     ts_str = m.group("ts")
     try:
         event_time = datetime.strptime(ts_str, "%d/%b/%Y:%H:%M:%S %z").replace(tzinfo=None)
     except Exception:
         event_time = datetime.utcnow()
 
+    status = int(m.group("status"))
+
     return {
         "event_time": event_time,
         "category": "web",
         "event_type": "http_request",
-        "level": "ERROR" if int(m.group("status")) >= 500 else "INFO",
+        "level": "ERROR" if status >= 500 else "INFO",
         "src_ip": m.group("src_ip"),
         "http_method": m.group("method"),
         "url": m.group("url"),
-        "http_status": int(m.group("status")),
+        "http_status": status,
         "extra": {
             "bytes": int(m.group("size")),
             "parser": "nginx_access_v1"
         }
     }
+
 
 def parse_suricata_eve(raw: str):
     try:
@@ -40,17 +115,12 @@ def parse_suricata_eve(raw: str):
     except Exception:
         return None
 
-    # Suricata eve.json genelde 'timestamp' taşır
     event_time = datetime.utcnow()
     if "timestamp" in obj:
-        # çok format olabilir, basit yaklaşım:
-        # 2020-01-01T00:00:00.000000+0000 gibi
         ts = obj["timestamp"]
-        try:
-            # en güvenlisi: kırpıp parse denemesi
-            event_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
-        except Exception:
-            event_time = datetime.utcnow()
+        t = _try_parse_iso_datetime(ts)
+        if t:
+            event_time = t
 
     return {
         "event_time": event_time,
@@ -65,9 +135,8 @@ def parse_suricata_eve(raw: str):
         "extra": obj
     }
 
+
 def parse_linux_auth(raw: str):
-    # Çok farklı format var. Basit bir “failed password” yakalayıcı.
-    # Örn: "Failed password for invalid user root from 1.2.3.4 port 12345 ssh2"
     m = re.search(r"Failed password.* from (?P<src_ip>\d+\.\d+\.\d+\.\d+)", raw)
     if not m:
         return None
@@ -82,11 +151,19 @@ def parse_linux_auth(raw: str):
         "extra": {"parser": "linux_auth_v1"}
     }
 
+
 def parse_by_hint(raw: str, hint: str | None):
+    # 1) explicit hint
     if hint == "nginx_access":
         return parse_nginx_access(raw)
     if hint == "suricata_eve":
         return parse_suricata_eve(raw)
     if hint == "linux_auth":
         return parse_linux_auth(raw)
+
+    # 2) AUTO fallback: JSON line ise parse et
+    auto = parse_json_auto(raw)
+    if auto:
+        return auto
+
     return None
