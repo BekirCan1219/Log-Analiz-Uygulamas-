@@ -17,43 +17,61 @@ def _parse_dt(value: str | None):
         return None
 
 
+def _to_int(v: str | None):
+    if v is None:
+        return None
+    v = str(v).strip()
+    if not v:
+        return None
+    try:
+        return int(v)
+    except Exception:
+        return None
+
+
 @search_bp.get("/")
 def search():
     """
     Discover uyumlu log arama endpoint'i
 
     Query parametreleri:
-    - page        : sayfa numarası (default 1)
-    - size        : sayfa başı kayıt (default 50)
-    - q           : message / raw_text / extra_json içinde arama
-    - service     : servis adı
-    - level       : INFO/WARN/ERROR/CRITICAL
-    - category    : web/auth/ids/app
-    - src_ip      : kaynak IP
-    - http_status : HTTP status code
-    - hours       : son X saat (default 24)
-    - from        : ISO datetime (opsiyonel)
-    - to          : ISO datetime (opsiyonel)
+    - page, size
+    - hours (default 24) veya from/to ISO datetime
+    - q: message/raw_text/extra_json içinde genel arama
+    - message_contains: sadece message içinde arama
+    - url_contains: sadece url içinde arama
+    - service, level, category, src_ip
+    - http_status
+    - http_status_min, http_status_max
     """
 
     # -------- pagination --------
-    page = int(request.args.get("page", 1))
-    size = int(request.args.get("size", 50))
+    page = _to_int(request.args.get("page")) or 1
+    size = _to_int(request.args.get("size")) or 50
+    if page < 1:
+        page = 1
+    if size < 1:
+        size = 50
+    if size > 500:
+        size = 500  # derste yeter, DB’yi boğmayalım
+
     offset = (page - 1) * size
 
     # -------- filters --------
-    q = request.args.get("q")
-    service = request.args.get("service")
-    level = request.args.get("level")
-    category = request.args.get("category")
-    src_ip = request.args.get("src_ip")
-    http_status = request.args.get("http_status")
+    q = (request.args.get("q") or "").strip() or None
+    service = (request.args.get("service") or "").strip() or None
+    level = (request.args.get("level") or "").strip() or None
+    category = (request.args.get("category") or "").strip() or None
+    src_ip = (request.args.get("src_ip") or "").strip() or None
 
-    hours = request.args.get("hours", 24)
-    try:
-        hours = int(hours)
-    except Exception:
-        hours = 24
+    http_status = _to_int(request.args.get("http_status"))
+    http_status_min = _to_int(request.args.get("http_status_min"))
+    http_status_max = _to_int(request.args.get("http_status_max"))
+
+    url_contains = (request.args.get("url_contains") or "").strip() or None
+    message_contains = (request.args.get("message_contains") or "").strip() or None
+
+    hours = _to_int(request.args.get("hours")) or 24
 
     time_to = _parse_dt(request.args.get("to")) or datetime.utcnow()
     time_from = _parse_dt(request.args.get("from")) or (time_to - timedelta(hours=hours))
@@ -63,8 +81,9 @@ def search():
         LogEvent.ingest_time.between(time_from, time_to)
     )
 
+    # service contains (daha kullanışlı)
     if service:
-        base = base.filter(LogEvent.service == service)
+        base = base.filter(LogEvent.service.ilike(f"%{service}%"))
 
     if level:
         base = base.filter(LogEvent.level == level)
@@ -75,11 +94,20 @@ def search():
     if src_ip:
         base = base.filter(LogEvent.src_ip == src_ip)
 
-    if http_status:
-        try:
-            base = base.filter(LogEvent.http_status == int(http_status))
-        except Exception:
-            pass
+    if http_status is not None:
+        base = base.filter(LogEvent.http_status == http_status)
+
+    if http_status_min is not None:
+        base = base.filter(LogEvent.http_status >= http_status_min)
+
+    if http_status_max is not None:
+        base = base.filter(LogEvent.http_status <= http_status_max)
+
+    if url_contains:
+        base = base.filter(LogEvent.url.ilike(f"%{url_contains}%"))
+
+    if message_contains:
+        base = base.filter(LogEvent.message.ilike(f"%{message_contains}%"))
 
     if q:
         like = f"%{q}%"
@@ -91,10 +119,8 @@ def search():
             )
         )
 
-    # -------- total (CRITICAL) --------
     total = base.count()
 
-    # -------- paged result --------
     rows = (
         base
         .order_by(LogEvent.ingest_time.desc())
@@ -142,6 +168,6 @@ def search():
         "success": True,
         "page": page,
         "size": size,
-        "total": total,     # 🔴 Discover için şart
+        "total": total,
         "data": results
     })

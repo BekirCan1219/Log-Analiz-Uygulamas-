@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Alerts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { background:#0b0f17; color:#e6e6e6; font-family:Arial; padding:20px; }
+  a { color:#9ad; text-decoration:none; padding:6px 10px; border:1px solid #2b3b60; border-radius:10px; background:#0f1626; font-size:13px; display:inline-block; }
+  a:hover { filter:brightness(1.12); }
+  .top { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .card { background:#121a2a; border:1px solid #22314f; border-radius:12px; padding:14px; margin-bottom:14px; }
+  button, select, input { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:6px 10px; cursor:pointer; }
+  button:hover { filter:brightness(1.12); }
+  table { width:100%; border-collapse:collapse; }
+  th,td { border-bottom:1px solid #22314f; padding:8px; vertical-align:top; }
+  th { color:#b9c3d6; }
+  .small { color:#9aa4b2; font-size:12px; }
+  .chip { padding:3px 8px; border-radius:999px; border:1px solid #2b3b60; background:#0f1626; font-size:12px; display:inline-block; }
+  details summary { cursor:pointer; color:#9ad; font-size:13px; padding:6px 10px; border:1px solid #2b3b60; border-radius:10px; background:#0f1626; display:inline-block; }
+  .debugBox { margin-top:8px; background:#0f1626; border:1px solid #22314f; border-radius:12px; padding:10px; }
+  .debugBox a { display:block; margin:4px 0; }
+
+  .right { text-align:right; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .err { color:#ffb4b4; font-size:13px; }
+  .ok  { color:#b7ffb4; font-size:13px; }
+
+  /* Drilldown UI */
+  tr.alert-row { cursor:pointer; }
+  tr.alert-row:hover { background: rgba(255,255,255,0.03); }
+  tr.drill-row td { border-bottom:1px solid #22314f; background:#0f1626; }
+  .drillWrap { padding:12px; }
+  .drillHead { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .drillTitle { font-size:13px; color:#e6e6e6; }
+  .badge { display:inline-block; padding:2px 8px; border:1px solid #22314f; background:#121a2a; border-radius:999px; font-size:12px; color:#b9c3d6; }
+  .miniBtn { padding:5px 9px; font-size:12px; border-radius:10px; }
+  .miniBtn:hover { filter:brightness(1.10); }
+
+  .eventsBox { border:1px solid #22314f; border-radius:12px; overflow:hidden; background:#121a2a; }
+  .eventsHdr { padding:10px; border-bottom:1px solid #22314f; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .eventsHdr .small { margin:0; }
+  .eventsTable { width:100%; border-collapse:collapse; }
+  .eventsTable th, .eventsTable td { border-bottom:1px solid #22314f; padding:8px; vertical-align:top; }
+  .eventsTable th { color:#b9c3d6; background: rgba(255,255,255,0.02); font-size:12px; }
+  .evRow { cursor:pointer; }
+  .evRow:hover { background: rgba(255,255,255,0.03); }
+
+  .preBox { margin-top:10px; display:none; }
+  .preBox.open { display:block; }
+  pre { margin:0; white-space:pre-wrap; word-break:break-word; background:#0b0f17; border:1px solid #22314f; border-radius:12px; padding:10px; color:#e6e6e6; }
+  .twoCol { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+  @media (max-width: 900px){
+    .twoCol { grid-template-columns:1fr; }
+  }
+
+  .loading { color:#9ad; font-size:13px; }
+  .warn { color:#ffcc66; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="/dashboard">Dashboard</a>
+  <a href="/discover">Discover</a>
+  <a href="/rules">Rules</a>
+  <a href="/api/ingest/upload">Upload</a>
+
+  <label class="small">Status:</label>
+  <select id="status">
+    <option value="open" selected>open</option>
+    <option value="ack">ack</option>
+    <option value="closed">closed</option>
+  </select>
+
+  <button onclick="load()">Yenile</button>
+
+  <details>
+    <summary>Debug API</summary>
+    <div class="debugBox">
+      <a href="/api/alerts?status=open" target="_blank">Open Alerts JSON</a>
+      <a href="/api/alerts?status=ack" target="_blank">Ack Alerts JSON</a>
+      <a href="/api/alerts?status=closed" target="_blank">Closed Alerts JSON</a>
+    </div>
+  </details>
+</div>
+
+<h2>Alerts</h2>
+
+<div class="card">
+  <div class="row" style="justify-content:space-between;">
+    <div class="small" id="meta">-</div>
+    <div class="row">
+      <span class="small">Opsiyonel not:</span>
+      <input id="note" placeholder="ack/close notu (opsiyonel)" style="min-width:260px;">
+    </div>
+  </div>
+
+  <div id="msg" class="small" style="margin-top:8px;"></div>
+
+  <table style="margin-top:10px;">
+    <thead>
+      <tr>
+        <th style="width:170px;">Zaman</th>
+        <th>Title</th>
+        <th style="width:90px;">Rule</th>
+        <th style="width:220px;">Group</th>
+        <th class="right" style="width:70px;">Hits</th>
+        <th class="right" style="width:240px;">Action</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+async function fetchJSON(url, opts={}) {
+  // session cookie için include
+  const finalOpts = Object.assign({ credentials: "include" }, opts);
+  const r = await fetch(url, finalOpts);
+  const text = await r.text();
+  let js = null;
+  try { js = JSON.parse(text); } catch {}
+  if (!r.ok) {
+    const msg = js?.error ? (typeof js.error === "string" ? js.error : JSON.stringify(js.error)) : text;
+    throw new Error(msg);
+  }
+  return js ?? {};
+}
+
+function pickTime(a){
+  return a.alert_time || a.last_seen || a.first_seen || null;
+}
+
+function esc(s){
+  if (s === null || s === undefined) return "";
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+}
+
+function setMsg(text, ok=false){
+  const el = document.getElementById("msg");
+  el.className = ok ? "ok" : "err";
+  el.textContent = text || "";
+}
+
+function fmtDT(v){
+  try{
+    if (!v) return "-";
+    return new Date(v).toLocaleString();
+  }catch{
+    return String(v || "-");
+  }
+}
+
+function normJSON(v){
+  // API bazen JSON string dönebilir
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string"){
+    const s = v.trim();
+    if (!s) return null;
+    try { return JSON.parse(s); } catch { return v; }
+  }
+  return v;
+}
+
+function removeDrilldown(tb, alertId){
+  const drill = tb.querySelector(`tr.drill-row[data-alert-id="${alertId}"]`);
+  if (drill) drill.remove();
+  const row = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
+  if (row) row.classList.remove("expanded");
+}
+
+function closeOtherDrilldowns(tb, keepAlertId){
+  tb.querySelectorAll("tr.drill-row").forEach(tr=>{
+    const aid = tr.getAttribute("data-alert-id");
+    if (String(aid) !== String(keepAlertId)) tr.remove();
+  });
+  tb.querySelectorAll("tr.alert-row").forEach(tr=>{
+    const aid = tr.getAttribute("data-alert-id");
+    if (String(aid) !== String(keepAlertId)) tr.classList.remove("expanded");
+  });
+}
+
+function renderDrilldownRow(tb, alertObj){
+  const alertId = alertObj.id;
+  tb.insertAdjacentHTML("beforeend", `
+    <tr class="drill-row" data-alert-id="${esc(alertId)}">
+      <td colspan="6">
+        <div class="drillWrap" id="drill-${esc(alertId)}">
+          <div class="drillHead">
+            <div class="drillTitle">
+              <span class="badge">Alert #${esc(alertId)}</span>
+              <span class="badge">status=${esc(alertObj.status || "-")}</span>
+              <span class="badge">severity=${esc(alertObj.severity || "-")}</span>
+              <span class="badge">hits=${esc(alertObj.hit_count ?? 0)}</span>
+            </div>
+            <div class="row">
+              <button class="miniBtn" onclick="event.stopPropagation(); refreshEvents(${alertId});">Events Yenile</button>
+              <a href="/alerts/${esc(alertId)}" onclick="event.stopPropagation();">Detay Sayfa</a>
+            </div>
+          </div>
+
+          <div id="drillMsg-${esc(alertId)}" class="small loading">Loading events...</div>
+
+          <div class="eventsBox" style="margin-top:10px;">
+            <div class="eventsHdr">
+              <div class="small">Related Events (limit=50) · satıra tıkla → raw/parsed aç</div>
+              <div class="small" id="eventsMeta-${esc(alertId)}">-</div>
+            </div>
+            <div style="overflow:auto;">
+              <table class="eventsTable">
+                <thead>
+                  <tr>
+                    <th style="width:170px;">ingest_time</th>
+                    <th style="width:110px;">service</th>
+                    <th style="width:90px;">level</th>
+                    <th style="width:110px;">event_type</th>
+                    <th>message</th>
+                    <th style="width:120px;">src_ip</th>
+                    <th style="width:90px;">http</th>
+                  </tr>
+                </thead>
+                <tbody id="eventsTbody-${esc(alertId)}">
+                  <tr><td colspan="7" class="small loading">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="eventDetail-${esc(alertId)}" class="preBox" style="margin-top:10px;">
+            <div class="twoCol">
+              <div>
+                <div class="small" style="margin-bottom:6px;">raw_text</div>
+                <pre id="rawPre-${esc(alertId)}"></pre>
+              </div>
+              <div>
+                <div class="small" style="margin-bottom:6px;">parsed (JSON)</div>
+                <pre id="parsedPre-${esc(alertId)}"></pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </td>
+    </tr>
+  `);
+}
+
+async function refreshEvents(alertId){
+  const msgEl = document.getElementById(`drillMsg-${alertId}`);
+  const tbEl = document.getElementById(`eventsTbody-${alertId}`);
+  const metaEl = document.getElementById(`eventsMeta-${alertId}`);
+  const detailBox = document.getElementById(`eventDetail-${alertId}`);
+  const rawPre = document.getElementById(`rawPre-${alertId}`);
+  const parsedPre = document.getElementById(`parsedPre-${alertId}`);
+
+  if (!msgEl || !tbEl) return;
+
+  msgEl.className = "small loading";
+  msgEl.textContent = "Loading events...";
+  metaEl.textContent = "-";
+  tbEl.innerHTML = `<tr><td colspan="7" class="small loading">Loading...</td></tr>`;
+  if (detailBox) detailBox.classList.remove("open");
+  if (rawPre) rawPre.textContent = "";
+  if (parsedPre) parsedPre.textContent = "";
+
+  try{
+    const res = await fetchJSON(`/api/alerts/${alertId}/events?limit=50`);
+    const events = res.data || res.events || [];
+
+    msgEl.className = "small";
+    msgEl.textContent = events.length ? "" : "Bu alert için event bulunamadı.";
+    metaEl.textContent = `count=${events.length}`;
+
+    if (!events.length){
+      tbEl.innerHTML = `<tr><td colspan="7" class="small warn">Event yok.</td></tr>`;
+      return;
+    }
+
+    tbEl.innerHTML = "";
+    events.forEach((ev, idx) => {
+      const ingest = ev.ingest_time || ev.timestamp || ev.time || null;
+      const service = ev.service || ev.app || "";
+      const level = ev.level || ev.severity || "";
+      const etype = ev.event_type || ev.type || "";
+      const message = ev.message || ev.msg || "";
+      const srcip = ev.src_ip || ev.client_ip || "";
+      const http = (ev.http_status !== undefined && ev.http_status !== null) ? String(ev.http_status) : (ev.status || "");
+
+      // raw & parsed alanları esnek: raw_text / raw / message; parsed alanları: fields / parsed / extra_json / data
+      const rawText = ev.raw_text ?? ev.raw ?? ev.rawline ?? ev.line ?? ev.message ?? "";
+      const parsedObj = normJSON(ev.parsed ?? ev.fields ?? ev.extra_json ?? ev.data ?? ev.json ?? null);
+
+      tbEl.insertAdjacentHTML("beforeend", `
+        <tr class="evRow" data-alert-id="${esc(alertId)}" data-idx="${idx}">
+          <td class="small">${esc(fmtDT(ingest))}</td>
+          <td><span class="chip">${esc(service || "-")}</span></td>
+          <td><span class="chip">${esc(level || "-")}</span></td>
+          <td class="small">${esc(etype || "-")}</td>
+          <td class="small">${esc(message || "-")}</td>
+          <td class="small">${esc(srcip || "-")}</td>
+          <td class="small">${esc(http || "-")}</td>
+        </tr>
+      `);
+
+      // event objesini DOM'a bağlamanın en pratik yolu: window cache
+      window.__evCache = window.__evCache || {};
+      window.__evCache[`${alertId}:${idx}`] = { rawText, parsedObj, ev };
+    });
+
+    // click handler: delegate
+    tbEl.querySelectorAll("tr.evRow").forEach(tr=>{
+      tr.addEventListener("click", (e)=>{
+        e.stopPropagation();
+        const idx = tr.getAttribute("data-idx");
+        const key = `${alertId}:${idx}`;
+        const item = (window.__evCache || {})[key];
+        if (!item) return;
+
+        // toggle detail
+        const box = document.getElementById(`eventDetail-${alertId}`);
+        const raw = document.getElementById(`rawPre-${alertId}`);
+        const parsed = document.getElementById(`parsedPre-${alertId}`);
+
+        if (!box || !raw || !parsed) return;
+
+        // Eğer aynı event tekrar tıklandıysa kapat
+        const currentlyOpenKey = box.getAttribute("data-open-key");
+        if (box.classList.contains("open") && currentlyOpenKey === key){
+          box.classList.remove("open");
+          box.removeAttribute("data-open-key");
+          return;
+        }
+
+        box.setAttribute("data-open-key", key);
+        box.classList.add("open");
+        raw.textContent = item.rawText ? String(item.rawText) : "(raw_text yok)";
+        parsed.textContent =
+          item.parsedObj === null ? "(parsed yok)" :
+          (typeof item.parsedObj === "string" ? item.parsedObj : JSON.stringify(item.parsedObj, null, 2));
+      });
+    });
+
+  }catch(err){
+    msgEl.className = "small err";
+    msgEl.textContent = "Events yüklenemedi: " + err.message;
+    tbEl.innerHTML = `<tr><td colspan="7" class="small err">Hata: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+async function toggleAlertDrilldown(alertObj){
+  const tb = document.getElementById("tbody");
+  const alertId = alertObj.id;
+
+  const existing = tb.querySelector(`tr.drill-row[data-alert-id="${alertId}"]`);
+  if (existing){
+    // collapse
+    existing.remove();
+    const row = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
+    if (row) row.classList.remove("expanded");
+    return;
+  }
+
+  // tek bir drilldown açık kalsın (isteğe bağlı) -> kullanıcı için daha temiz
+  closeOtherDrilldowns(tb, alertId);
+
+  // drill row'u, alert satırının hemen altına insert etmek için:
+  // 1) alert row'u bul
+  const alertRow = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
+  if (!alertRow) return;
+
+  // 2) drill row html'ini alert row'un hemen sonrasına ekle
+  alertRow.insertAdjacentHTML("afterend", `
+    <tr class="drill-row" data-alert-id="${esc(alertId)}">
+      <td colspan="6">
+        <div class="drillWrap" id="drill-${esc(alertId)}">
+          <div class="drillHead">
+            <div class="drillTitle">
+              <span class="badge">Alert #${esc(alertId)}</span>
+              <span class="badge">status=${esc(alertObj.status || "-")}</span>
+              <span class="badge">severity=${esc(alertObj.severity || "-")}</span>
+              <span class="badge">hits=${esc(alertObj.hit_count ?? 0)}</span>
+            </div>
+            <div class="row">
+              <button class="miniBtn" onclick="event.stopPropagation(); refreshEvents(${alertId});">Events Yenile</button>
+              <a href="/alerts/${esc(alertId)}" onclick="event.stopPropagation();">Detay Sayfa</a>
+            </div>
+          </div>
+
+          <div id="drillMsg-${esc(alertId)}" class="small loading">Loading events...</div>
+
+          <div class="eventsBox" style="margin-top:10px;">
+            <div class="eventsHdr">
+              <div class="small">Related Events (limit=50) · event’e tıkla → raw/parsed</div>
+              <div class="small" id="eventsMeta-${esc(alertId)}">-</div>
+            </div>
+            <div style="overflow:auto;">
+              <table class="eventsTable">
+                <thead>
+                  <tr>
+                    <th style="width:170px;">ingest_time</th>
+                    <th style="width:110px;">service</th>
+                    <th style="width:90px;">level</th>
+                    <th style="width:110px;">event_type</th>
+                    <th>message</th>
+                    <th style="width:120px;">src_ip</th>
+                    <th style="width:90px;">http</th>
+                  </tr>
+                </thead>
+                <tbody id="eventsTbody-${esc(alertId)}">
+                  <tr><td colspan="7" class="small loading">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="eventDetail-${esc(alertId)}" class="preBox" style="margin-top:10px;">
+            <div class="twoCol">
+              <div>
+                <div class="small" style="margin-bottom:6px;">raw_text</div>
+                <pre id="rawPre-${esc(alertId)}"></pre>
+              </div>
+              <div>
+                <div class="small" style="margin-bottom:6px;">parsed (JSON)</div>
+                <pre id="parsedPre-${esc(alertId)}"></pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </td>
+    </tr>
+  `);
+
+  alertRow.classList.add("expanded");
+
+  // events'i çek
+  await refreshEvents(alertId);
+}
+
+async function load(){
+  setMsg("");
+  const st = document.getElementById("status").value;
+
+  let res;
+  try{
+    res = await fetchJSON(`/api/alerts?status=${encodeURIComponent(st)}`);
+  }catch(e){
+    setMsg("Load hata: " + e.message, false);
+    return;
+  }
+
+  const list = res.data || [];
+  document.getElementById("meta").textContent = `status=${st} · count=${list.length}`;
+
+  const tb = document.getElementById("tbody");
+  tb.innerHTML = "";
+
+  if (list.length === 0){
+    tb.innerHTML = `<tr><td colspan="6" class="small">Kayıt yok.</td></tr>`;
+    return;
+  }
+
+  list.forEach(a=>{
+    const t = pickTime(a);
+    const tText = t ? new Date(t).toLocaleString() : "-";
+
+    // satır click -> drilldown toggle
+    tb.insertAdjacentHTML("beforeend",`
+      <tr class="alert-row alert-row-${esc(a.id)} alert-row" data-alert-id="${esc(a.id)}">
+        <td class="small">${esc(tText)}</td>
+        <td>
+          <b>${esc(a.title || "-")}</b>
+          <div class="small">${esc(a.severity || "")} · ${esc(a.status || "")}</div>
+        </td>
+        <td><span class="chip">#${esc(a.rule_id)}</span></td>
+        <td><span class="chip">${esc(a.group_key || "-")}</span></td>
+        <td class="right">${esc(a.hit_count ?? 0)}</td>
+        <td class="right">
+          <a href="/alerts/${esc(a.id)}" onclick="event.stopPropagation();">Detay</a>
+          <button onclick="event.stopPropagation(); ack(${a.id});">Ack</button>
+          <button onclick="event.stopPropagation(); closeA(${a.id});">Close</button>
+        </td>
+      </tr>
+    `);
+
+    const rowEl = tb.querySelector(`tr.alert-row[data-alert-id="${a.id}"]`);
+    if (rowEl){
+      rowEl.addEventListener("click", ()=>{
+        toggleAlertDrilldown(a);
+      });
+    }
+  });
+}
+
+async function ack(id){
+  const note = document.getElementById("note").value || null;
+  try{
+    await fetchJSON(`/api/alerts/${id}/ack`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({note})
+    });
+    setMsg("Ack OK", true);
+    load();
+  }catch(e){
+    setMsg("Ack hata: " + e.message, false);
+  }
+}
+
+async function closeA(id){
+  const note = document.getElementById("note").value || null;
+  try{
+    await fetchJSON(`/api/alerts/${id}/close`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({note})
+    });
+    setMsg("Close OK", true);
+    load();
+  }catch(e){
+    setMsg("Close hata: " + e.message, false);
+  }
+}
+
+document.getElementById("status").addEventListener("change", load);
+load();
+</script>
+
+</body>
+</html>

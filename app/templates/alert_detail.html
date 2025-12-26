@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alert Detail</title>
+<style>
+  body { margin:0; font-family:Arial; background:#0b0f17; color:#e6e6e6; }
+  header { padding:16px 20px; background:#121a2a; border-bottom:1px solid #22314f;
+           display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
+  header h1 { margin:0; font-size:18px; }
+  header .links a { margin-left:8px; padding:6px 10px; border-radius:10px; border:1px solid #2b3b60;
+                    background:#0f1626; color:#9ad; text-decoration:none; font-size:13px; }
+  .container { padding:18px; max-width:1200px; margin:0 auto; }
+  .grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap:14px; }
+  @media (max-width: 980px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:#121a2a; border:1px solid #22314f; border-radius:14px; padding:14px; }
+  .muted { color:#9aa4b2; font-size:12px; }
+  .k { color:#9aa4b2; font-size:12px; }
+  .v { font-size:13px; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; }
+  .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+          border:1px solid #2b3b60; background:#0f1626; font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#888; }
+  .dot.good { background:#3ddc97; }
+  .dot.warn { background:#ffcc66; }
+  .dot.bad  { background:#ff6b6b; }
+  button { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; width:100%; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { border-bottom:1px solid #22314f; padding:10px 8px; text-align:left; font-size:13px; vertical-align:top; }
+  th { color:#9aa4b2; font-size:12px; }
+  tr.clickable:hover { background: rgba(154,221,255,.08); cursor:pointer; }
+  .pre { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+         background:#0f1626; border:1px solid #2b3b60; border-radius:12px; padding:10px; font-size:12px; }
+  .details { display:none; }
+  .statusBox { display:none; margin-top:10px; padding:10px 12px; border-radius:12px;
+              border:1px solid rgba(154,221,255,.25); background: rgba(154,221,255,.08); color:#d8f4ff; }
+  .statusBox.error { border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.08); color:#ffd2d2; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Alert Detail</h1>
+  <div class="links">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/alerts">Alerts</a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:flex-start;">
+        <div style="min-width:240px;">
+          <div class="muted">Title</div>
+          <div id="title" style="font-size:18px; font-weight:700; margin-top:4px;">-</div>
+          <div class="muted" style="margin-top:6px;">Alert ID: <span class="v" id="aid">-</span> | Rule ID: <span class="v" id="rid">-</span></div>
+        </div>
+
+        <div class="row" style="gap:10px;">
+          <span class="pill"><span class="dot" id="sevDot"></span><span id="severity">-</span></span>
+          <span class="pill"><span class="dot" id="stDot"></span><span id="status">-</span></span>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;" class="row">
+        <div style="flex:1; min-width:220px;">
+          <div class="k">Group Key</div>
+          <div class="v" id="group_key">-</div>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <div class="k">Window</div>
+          <div class="v"><span id="w_from">-</span> → <span id="w_to">-</span></div>
+        </div>
+        <div style="flex:1; min-width:160px;">
+          <div class="k">Hit Count</div>
+          <div class="v" id="hit_count">-</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;" class="row">
+        <div style="flex:1; min-width:220px;">
+          <div class="k">First Seen</div>
+          <div class="v" id="first_seen">-</div>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <div class="k">Last Seen</div>
+          <div class="v" id="last_seen">-</div>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <div class="k">Closed At</div>
+          <div class="v" id="closed_at">-</div>
+        </div>
+      </div>
+
+      <div id="adminActions" style="margin-top:14px; display:none;">
+        <div class="row">
+          <div style="flex:1; min-width:260px;">
+            <div class="k">Note (optional)</div>
+            <input id="note" placeholder="ack/close notu...">
+          </div>
+          <div style="display:flex; gap:10px; align-items:flex-end;">
+            <button id="btnAck">Ack</button>
+            <button id="btnClose">Close</button>
+          </div>
+        </div>
+        <div id="statusBox" class="statusBox"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px;">Audit Trail</h3>
+      <div class="muted" style="margin-bottom:10px;">Ack / Close geçmişi</div>
+      <div id="audit" class="muted">-</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <h3 style="margin:0;">Related Events</h3>
+      <div class="muted">Satıra tıkla → detay aç/kapat</div>
+    </div>
+
+    <div style="overflow:auto; margin-top:10px;">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:90px;">Event ID</th>
+            <th style="min-width:180px;">Ingest Time</th>
+            <th style="min-width:110px;">Service</th>
+            <th style="min-width:90px;">Level</th>
+            <th style="min-width:100px;">Src IP</th>
+            <th style="min-width:90px;">Status</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="events"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const ALERT_ID = {{ alert_id|tojson }};
+
+  function sevDotClass(sev){
+    const s = (sev||"").toLowerCase();
+    if (s === "high" || s === "critical") return "bad";
+    if (s === "medium") return "warn";
+    return "good";
+  }
+
+  function stDotClass(st){
+    const s = (st||"").toLowerCase();
+    if (s === "closed") return "good";
+    if (s === "ack") return "warn";
+    return "bad";
+  }
+
+  function setStatus(msg, isErr=false){
+    const box = document.getElementById("statusBox");
+    box.style.display = "block";
+    box.className = "statusBox" + (isErr ? " error" : "");
+    box.textContent = msg;
+  }
+
+  async function fetchJSON(url, opts={}){
+    const r = await fetch(url, { credentials:"include", ...opts });
+    const t = await r.text();
+    let j = {};
+    try{ j = t ? JSON.parse(t) : {}; }catch(e){ j = { raw: t }; }
+    if(!r.ok){
+      const msg = j.error || j.message || t || r.statusText;
+      throw new Error(`HTTP ${r.status} - ${msg}`);
+    }
+    return j;
+  }
+
+  async function loadRole(){
+    try{
+      const me = await fetchJSON("/auth/me");
+      const role = me.user?.role;
+      if(role === "admin"){
+        document.getElementById("adminActions").style.display = "";
+      }
+    }catch(e){
+      // login yoksa backend zaten pages_controller ile /login'e atıyor
+    }
+  }
+
+  function renderAudit(details){
+    const host = document.getElementById("audit");
+    const audit = details?.audit;
+    if(!Array.isArray(audit) || audit.length === 0){
+      host.textContent = "Audit kaydı yok.";
+      return;
+    }
+    host.innerHTML = audit.map(a => {
+      const ts = a.ts || "-";
+      const action = a.action || "-";
+      const note = (a.note || "").trim();
+      return `<div style="padding:10px; border:1px solid #22314f; border-radius:12px; margin-bottom:8px; background:#0f1626;">
+        <div><b>${action.toUpperCase()}</b> <span class="muted">${ts}</span></div>
+        <div class="muted" style="margin-top:6px;">${note ? note : "(no note)"}</div>
+      </div>`;
+    }).join("");
+  }
+
+  function rowHtml(e){
+    const msg = (e.message || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return `
+      <tr class="clickable" data-eid="${e.id}">
+        <td class="mono">${e.id}</td>
+        <td>${e.ingest_time || "-"}</td>
+        <td>${e.service || "-"}</td>
+        <td>${e.level || "-"}</td>
+        <td>${e.src_ip || "-"}</td>
+        <td>${(e.http_status ?? "-")}</td>
+        <td>${msg}</td>
+      </tr>
+      <tr class="details" id="d_${e.id}">
+        <td colspan="7">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div>
+              <div class="muted">raw_text</div>
+              <div class="pre">${(e.raw_text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;") || "-"}</div>
+            </div>
+            <div>
+              <div class="muted">parsed fields</div>
+              <div class="pre">${JSON.stringify({
+                id: e.id,
+                ingest_time: e.ingest_time,
+                service: e.service,
+                level: e.level,
+                category: e.category,
+                parse_status: e.parse_status,
+                event_type: e.event_type,
+                src_ip: e.src_ip,
+                url: e.url,
+                http_status: e.http_status,
+                message: e.message
+              }, null, 2).replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function wireExpand(){
+    document.getElementById("events").addEventListener("click", (ev)=>{
+      const tr = ev.target.closest("tr.clickable");
+      if(!tr) return;
+      const id = tr.getAttribute("data-eid");
+      const detailRow = document.getElementById("d_" + id);
+      if(!detailRow) return;
+      detailRow.style.display = (detailRow.style.display === "table-row") ? "none" : "table-row";
+    });
+  }
+
+  async function load(){
+    const res = await fetchJSON(`/api/alerts/${ALERT_ID}`);
+    const a = res.alert;
+
+    document.getElementById("aid").textContent = a.id;
+    document.getElementById("rid").textContent = a.rule_id ?? "-";
+    document.getElementById("title").textContent = a.title || "-";
+    document.getElementById("severity").textContent = a.severity || "-";
+    document.getElementById("status").textContent = a.status || "-";
+    document.getElementById("group_key").textContent = a.group_key || "-";
+    document.getElementById("w_from").textContent = a.window_from || "-";
+    document.getElementById("w_to").textContent = a.window_to || "-";
+    document.getElementById("hit_count").textContent = a.hit_count ?? "-";
+    document.getElementById("first_seen").textContent = a.first_seen || "-";
+    document.getElementById("last_seen").textContent = a.last_seen || "-";
+    document.getElementById("closed_at").textContent = a.closed_at || "-";
+
+    const sevDot = document.getElementById("sevDot");
+    sevDot.className = "dot " + sevDotClass(a.severity);
+
+    const stDot = document.getElementById("stDot");
+    stDot.className = "dot " + stDotClass(a.status);
+
+    renderAudit(a.details);
+
+    const tb = document.getElementById("events");
+    const events = res.related_events || [];
+    if(events.length === 0){
+      tb.innerHTML = `<tr><td colspan="7" class="muted">İlgili event bulunamadı.</td></tr>`;
+    }else{
+      tb.innerHTML = events.map(rowHtml).join("");
+    }
+
+    wireExpand();
+  }
+
+  async function ackClose(kind){
+    const note = document.getElementById("note").value || "";
+    const btnAck = document.getElementById("btnAck");
+    const btnClose = document.getElementById("btnClose");
+    btnAck.disabled = true;
+    btnClose.disabled = true;
+
+    try{
+      await fetchJSON(`/api/alerts/${ALERT_ID}/${kind}`,{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ note })
+      });
+      setStatus(`OK: ${kind} işlemi başarılı`);
+      await load();
+    }catch(e){
+      setStatus(e.message, true);
+    }finally{
+      btnAck.disabled = false;
+      btnClose.disabled = false;
+    }
+  }
+
+  document.getElementById("btnAck").addEventListener("click", ()=> ackClose("ack"));
+  document.getElementById("btnClose").addEventListener("click", ()=> ackClose("close"));
+
+  loadRole().then(load).catch(e => console.error(e));
+</script>
+
+</body>
+</html>

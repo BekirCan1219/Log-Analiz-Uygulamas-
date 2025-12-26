@@ -4,167 +4,53 @@
   <meta charset="utf-8">
   <title>LogWatch Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0b0f17;
-      color: #e6e6e6;
-    }
+    body { margin:0; font-family: Arial, sans-serif; background:#0b0f17; color:#e6e6e6; }
+    header { padding:16px 20px; background:#121a2a; border-bottom:1px solid #22314f; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:22px; }
+    header .links a { margin-left:10px; padding:6px 10px; border-radius:10px; border:1px solid #2b3b60; background:#0f1626; color:#9ad; text-decoration:none; font-size:13px; }
+    header .links a:hover { filter:brightness(1.15); }
 
-    header {
-      padding: 16px 20px;
-      background: #121a2a;
-      border-bottom: 1px solid #22314f;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    .container { padding:16px; }
+    .card { background:#121a2a; border:1px solid #22314f; border-radius:14px; padding:14px; margin-bottom:14px; }
+    .card h3 { margin:0 0 10px; font-size:16px; }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    select, button { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; cursor:pointer; }
+    button:hover { filter:brightness(1.15); }
+    .kpi { display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:flex-start; }
+    .kpi .box { background:#0f1626; border:1px solid #22314f; border-radius:12px; padding:10px 14px; min-width:160px; }
+    .kpi .num { font-size:22px; font-weight:bold; }
+    .grid { display:grid; grid-template-columns: 1.2fr 1fr; gap:14px; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid #22314f; padding:8px; text-align:left; vertical-align:top; }
+    th { color:#b9c3d6; }
+    .right { text-align:right; }
+    .chip { padding:4px 8px; border-radius:999px; background:#0f1626; border:1px solid #2b3b60; font-size:12px; display:inline-block; margin:2px 6px 0 0; }
+    .small { font-size:12px; color:#9aa4b2; }
+    canvas { max-height:280px; }
 
-    header h1 {
-      margin: 0;
-      font-size: 22px;
-    }
-
-    header .links a {
-      margin-left: 10px;
-      padding: 6px 10px;
-      border-radius: 10px;
-      border: 1px solid #2b3b60;
-      background: #0f1626;
-      color: #9ad;
-      text-decoration: none;
-      font-size: 13px;
-    }
-
-    .container {
-      padding: 16px;
-    }
-
-    .card {
-      background: #121a2a;
-      border: 1px solid #22314f;
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 14px;
-    }
-
-    .card h3 {
-      margin: 0 0 10px;
-      font-size: 16px;
-    }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-    }
-
-    select, button {
-      background: #0f1626;
-      color: #e6e6e6;
-      border: 1px solid #2b3b60;
-      border-radius: 10px;
-      padding: 8px 10px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      filter: brightness(1.15);
-    }
-
-    .kpi {
-      display: flex;
-      gap: 12px;
-      margin-top: 10px;
-      flex-wrap: wrap;
-    }
-
-    .kpi .box {
-      background: #0f1626;
-      border: 1px solid #22314f;
-      border-radius: 12px;
-      padding: 10px 14px;
-      min-width: 160px;
-    }
-
-    .kpi .num {
-      font-size: 22px;
-      font-weight: bold;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 14px;
-    }
-
-    .grid2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    th, td {
-      border-bottom: 1px solid #22314f;
-      padding: 8px;
-      text-align: left;
-      vertical-align: top;
-    }
-
-    th {
-      color: #b9c3d6;
-    }
-
-    .right {
-      text-align: right;
-    }
-
-    .chip {
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #0f1626;
-      border: 1px solid #2b3b60;
-      font-size: 12px;
-      display: inline-block;
-    }
-
-    .small {
-      font-size: 12px;
-      color: #9aa4b2;
-    }
-
-    canvas {
-      max-height: 280px;
-    }
+    /* title link */
+    .titleLink { color:#9ad; text-decoration:none; }
+    .titleLink:hover { text-decoration:underline; }
   </style>
 </head>
 
 <body>
-
 <header>
   <h1>LogWatch Dashboard</h1>
   <div class="links">
     <a href="/api/ingest/upload" target="_blank">Upload</a>
-    <a href="/api/search?limit=20" target="_blank">Search API</a>
-    <a href="/api/alerts/rules" target="_blank">Rules</a>
+    <a href="/discover">Discover</a>
+    <a href="/alerts">Alerts</a>
+    <a href="/rules">Rules</a>
   </div>
 </header>
 
 <div class="container">
 
-  <!-- Controls -->
   <div class="card">
     <h3>Kontroller</h3>
     <div class="controls">
@@ -178,7 +64,8 @@
       </select>
 
       <button id="refreshBtn">Yenile</button>
-      <button id="runOnceBtn">Alarm Motoru (Run Once)</button>
+
+      <button id="runOnceBtn">Alarm Motoru (Run)</button>
       <span class="small" id="runOnceStatus"></span>
     </div>
 
@@ -190,15 +77,19 @@
       <div class="box">
         <div class="small">Open Alarm</div>
         <div class="num" id="openAlerts">-</div>
+        <div class="small" id="openSevChips" style="margin-top:6px;"></div>
       </div>
       <div class="box">
         <div class="small">Range</div>
         <div class="small" id="rangeText">-</div>
       </div>
+      <div class="box">
+        <div class="small">Parse Status</div>
+        <div class="small" id="parseChips">-</div>
+      </div>
     </div>
   </div>
 
-  <!-- Charts + tables -->
   <div class="grid">
     <div class="card">
       <h3>Log Yoğunluğu (Time Series)</h3>
@@ -208,9 +99,7 @@
     <div class="card">
       <h3>Top Services</h3>
       <table>
-        <thead>
-          <tr><th>Service</th><th class="right">Count</th></tr>
-        </thead>
+        <thead><tr><th>Service</th><th class="right">Count</th></tr></thead>
         <tbody id="servicesBody"></tbody>
       </table>
     </div>
@@ -220,9 +109,7 @@
     <div class="card">
       <h3>Top Source IP</h3>
       <table>
-        <thead>
-          <tr><th>IP</th><th class="right">Count</th></tr>
-        </thead>
+        <thead><tr><th>IP</th><th class="right">Count</th></tr></thead>
         <tbody id="ipsBody"></tbody>
       </table>
     </div>
@@ -232,10 +119,10 @@
       <table>
         <thead>
           <tr>
-            <th>Zaman</th>
-            <th>Alarm</th>
+            <th>Last Seen</th>
+            <th>Title</th>
             <th>Key</th>
-            <th class="right">Count</th>
+            <th class="right">Hit</th>
             <th>Aksiyon</th>
           </tr>
         </thead>
@@ -255,6 +142,8 @@
   const totalLogsEl = document.getElementById("totalLogs");
   const openAlertsEl = document.getElementById("openAlerts");
   const rangeTextEl = document.getElementById("rangeText");
+  const openSevChipsEl = document.getElementById("openSevChips");
+  const parseChipsEl = document.getElementById("parseChips");
 
   const servicesBody = document.getElementById("servicesBody");
   const ipsBody = document.getElementById("ipsBody");
@@ -264,12 +153,32 @@
 
   async function fetchJSON(url, opts={}) {
     const r = await fetch(url, opts);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    const text = await r.text();
+    let js = null;
+    try { js = JSON.parse(text); } catch {}
+    if (!r.ok) throw new Error(js?.error ? JSON.stringify(js.error) : text);
+    return js ?? {};
   }
 
-  function clear(el) {
-    while (el.firstChild) el.removeChild(el.firstChild);
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+  function renderChips(container, items){
+    container.innerHTML = "";
+    if(!items || items.length === 0){
+      container.textContent = "-";
+      return;
+    }
+    items.forEach(it=>{
+      const span = document.createElement("span");
+      span.className = "chip";
+      span.textContent = it;
+      container.appendChild(span);
+    });
+  }
+
+  function esc(s){
+    if (s === null || s === undefined) return "";
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
   }
 
   async function loadDashboard() {
@@ -277,12 +186,15 @@
     const bucket = Number(hours) <= 6 ? "minute" : "hour";
 
     const summary = await fetchJSON(`/api/metrics/summary?hours=${hours}`);
-    totalLogsEl.textContent = summary.total;
-    rangeTextEl.textContent = summary.range.from + " → " + summary.range.to;
+    totalLogsEl.textContent = summary.total ?? "-";
+    rangeTextEl.textContent = (summary.range?.from ?? "-") + " → " + (summary.range?.to ?? "-");
+
+    const ps = (summary.parse_status_counts || []).slice(0, 6).map(x => `ps=${x.parse_status}: ${x.count}`);
+    renderChips(parseChipsEl, ps);
 
     const ts = await fetchJSON(`/api/metrics/timeseries?hours=${hours}&bucket=${bucket}`);
-    const labels = ts.data.map(x => new Date(x.t).toLocaleString());
-    const values = ts.data.map(x => x.c);
+    const labels = (ts.data || []).map(x => new Date(x.t).toLocaleString());
+    const values = (ts.data || []).map(x => x.c);
 
     if (!volumeChart) {
       volumeChart = new Chart(document.getElementById("volumeChart"), {
@@ -297,30 +209,44 @@
     }
 
     clear(servicesBody);
-    summary.top_services.forEach(s => {
+    (summary.top_services || []).forEach(s => {
       servicesBody.insertAdjacentHTML("beforeend",
-        `<tr><td>${s.service}</td><td class="right">${s.count}</td></tr>`
+        `<tr><td>${esc(s.service)}</td><td class="right">${esc(s.count)}</td></tr>`
       );
     });
 
     clear(ipsBody);
-    summary.top_ips.forEach(ip => {
+    (summary.top_ips || []).forEach(ip => {
       ipsBody.insertAdjacentHTML("beforeend",
-        `<tr><td>${ip.src_ip}</td><td class="right">${ip.count}</td></tr>`
+        `<tr><td>${esc(ip.src_ip)}</td><td class="right">${esc(ip.count)}</td></tr>`
       );
     });
 
-    const alerts = await fetchJSON(`/api/alerts?status=open`);
-    openAlertsEl.textContent = alerts.data.length;
+    const openStats = await fetchJSON(`/api/alerts/?status=open&stats=1`);
+    openAlertsEl.textContent = openStats.count ?? "-";
+    const sev = openStats.severity_counts || {};
+    const sevChips = Object.keys(sev).map(k => `${k}: ${sev[k]}`);
+    renderChips(openSevChipsEl, sevChips);
+
+    const alerts = await fetchJSON(`/api/alerts/?status=open`);
+    const list = alerts.data || [];
 
     clear(alertsBody);
-    alerts.data.forEach(a => {
+    list.forEach(a => {
       alertsBody.insertAdjacentHTML("beforeend", `
         <tr>
-          <td class="small">${new Date(a.alert_time).toLocaleString()}</td>
-          <td><b>${a.title}</b></td>
-          <td><span class="chip">${a.group_key}</span></td>
-          <td class="right">${a.event_count}</td>
+          <td class="small">${a.last_seen ? new Date(a.last_seen).toLocaleString() : "-"}</td>
+
+          <!-- ✅ Title tıklanınca detay -->
+          <td>
+            <a class="titleLink" href="/alerts/${a.id}">
+              <b>${esc(a.title || "-")}</b>
+            </a>
+            <div class="small">${esc(a.severity || "")} · ${esc(a.status || "")}</div>
+          </td>
+
+          <td><span class="chip">${esc(a.group_key || "global")}</span></td>
+          <td class="right">${esc(a.hit_count || 1)}</td>
           <td>
             <button onclick="ack(${a.id})">Ack</button>
             <button onclick="closeAlert(${a.id})">Close</button>
@@ -345,8 +271,12 @@
   runOnceBtn.onclick = async () => {
     runOnceStatus.textContent = "çalışıyor...";
     try {
-      const r = await fetchJSON(`/api/alerts/run-once`, { method: "POST" });
-      runOnceStatus.textContent = "created=" + r.created;
+      const r = await fetchJSON(`/api/alerts/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutes: 10 })
+      });
+      runOnceStatus.textContent = "ok (fired=" + (r.fired ? r.fired.length : 0) + ")";
       loadDashboard();
     } catch (e) {
       alert(e.message);
@@ -356,6 +286,5 @@
 
   loadDashboard();
 </script>
-
 </body>
 </html>

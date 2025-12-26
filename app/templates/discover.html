@@ -72,6 +72,17 @@
       </div>
 
       <div>
+        <label>Category</label><br/>
+        <select id="category">
+          <option value="">(hepsi)</option>
+          <option value="web">web</option>
+          <option value="auth">auth</option>
+          <option value="ids">ids</option>
+          <option value="app">app</option>
+        </select>
+      </div>
+
+      <div>
         <label>Service</label><br/>
         <input id="service" placeholder="nginx / auth / suricata">
       </div>
@@ -83,6 +94,7 @@
           <option value="INFO">INFO</option>
           <option value="WARN">WARN</option>
           <option value="ERROR">ERROR</option>
+          <option value="CRITICAL">CRITICAL</option>
         </select>
       </div>
 
@@ -93,12 +105,32 @@
 
       <div>
         <label>HTTP Status</label><br/>
-        <input id="http_status" placeholder="200 / 404 / 500">
+        <input id="http_status" placeholder="200">
+      </div>
+
+      <div>
+        <label>Status Min</label><br/>
+        <input id="http_status_min" placeholder="400">
+      </div>
+
+      <div>
+        <label>Status Max</label><br/>
+        <input id="http_status_max" placeholder="599">
+      </div>
+
+      <div>
+        <label>URL contains</label><br/>
+        <input id="url_contains" placeholder="/admin">
       </div>
 
       <div style="flex:1; min-width:240px;">
-        <label>Text Search</label><br/>
-        <input id="q" placeholder="login failed, /admin, sql injection..." style="width:100%;">
+        <label>Text Search (q)</label><br/>
+        <input id="q" placeholder="login failed, sql injection..." style="width:100%;">
+      </div>
+
+      <div style="flex:1; min-width:240px;">
+        <label>Message contains</label><br/>
+        <input id="message_contains" placeholder="Failed password" style="width:100%;">
       </div>
 
       <div>
@@ -175,7 +207,6 @@
 
 <script>
 let page = 1;
-
 const el = id => document.getElementById(id);
 
 async function load() {
@@ -190,8 +221,13 @@ async function load() {
     size
   });
 
-  ["service","level","src_ip","http_status","q"].forEach(k=>{
-    if(el(k).value.trim()) params.set(k, el(k).value.trim());
+  [
+    "service","level","src_ip","http_status","q",
+    "category","http_status_min","http_status_max",
+    "url_contains","message_contains"
+  ].forEach(k=>{
+    const v = (el(k)?.value || "").trim();
+    if(v) params.set(k, v);
   });
 
   const res = await fetch("/api/search?" + params.toString()).then(r=>r.json());
@@ -204,13 +240,13 @@ async function load() {
 
   const start = (page-1)*size + 1;
   const end = start + items.length - 1;
-  el("rangeInfo").textContent = `${start}-${end} / ${total}`;
+  el("rangeInfo").textContent = (items.length ? `${start}-${end} / ${total}` : `0 / ${total}`);
 
   items.forEach(it=>{
     const tr = document.createElement("tr");
     tr.className = "click";
     tr.innerHTML = `
-      <td class="muted">${new Date(it.ingest_time).toLocaleString()}</td>
+      <td class="muted">${it.ingest_time ? new Date(it.ingest_time).toLocaleString() : "-"}</td>
       <td><span class="chip">${it.level||"-"}</span></td>
       <td>${it.service||"-"}</td>
       <td>${it.src_ip||"-"}</td>
@@ -242,7 +278,15 @@ function showDetail(it){
 }
 
 el("btnSearch").onclick = ()=>{ page=1; load(); };
-el("btnReset").onclick = ()=>{ page=1; ["service","level","src_ip","http_status","q"].forEach(k=>el(k).value=""); load(); };
+el("btnReset").onclick = ()=>{
+  page=1;
+  [
+    "service","level","src_ip","http_status","q",
+    "category","http_status_min","http_status_max",
+    "url_contains","message_contains"
+  ].forEach(k=>{ if(el(k)) el(k).value=""; });
+  load();
+};
 el("prevBtn").onclick = ()=>{ if(page>1){ page--; load(); }};
 el("nextBtn").onclick = ()=>{ page++; load(); };
 

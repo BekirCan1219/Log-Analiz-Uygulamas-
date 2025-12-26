@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rules</title>
+
+<style>
+  :root{
+    --bg:#0b0f17;
+    --panel:#121a2a;
+    --panel2:#0f1626;
+    --border:#22314f;
+    --text:#e6e6e6;
+    --muted:#9aa4b2;
+    --link:#9ad;
+    --good:#3ddc97;
+    --warn:#ffcc66;
+    --bad:#ff6b6b;
+  }
+  *{ box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:Arial; padding:18px; margin:0; }
+  h2{ margin:0 0 14px; }
+  a{ color:var(--link); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+
+  .topbar{
+    display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  .btn, button{
+    background:var(--panel2); color:var(--text);
+    border:1px solid #2b3b60; border-radius:10px;
+    padding:8px 10px; cursor:pointer; font-size:13px;
+  }
+  .btn:hover, button:hover{ border-color:#3a5486; }
+  .btn:disabled, button:disabled{ opacity:.55; cursor:not-allowed; }
+
+  textarea, input, select{
+    background:var(--panel2); color:var(--text);
+    border:1px solid #2b3b60; border-radius:10px;
+    padding:10px; width:100%;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size:12px;
+  }
+  label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; font-family: Arial; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px; }
+  .small { color:var(--muted); font-size:12px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  @media (max-width: 900px){ .grid{ grid-template-columns:1fr; } }
+
+  table { width:100%; border-collapse:collapse; }
+  th,td { border-bottom:1px solid var(--border); padding:10px 8px; font-size:13px; vertical-align:top; }
+  th{ color:var(--muted); font-size:12px; font-weight:700; text-align:left; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 9px;
+    border-radius:999px;
+    border:1px solid #2b3b60;
+    background:var(--panel2);
+    font-size:12px;
+  }
+  .dot{ width:8px; height:8px; border-radius:999px; background:#889; display:inline-block; }
+  .dot.good{ background:var(--good); }
+  .dot.warn{ background:var(--warn); }
+  .dot.bad{ background:var(--bad); }
+
+  .row-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+  .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+  .status{
+    margin:10px 0 0;
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid rgba(154,221,255,.25);
+    background: rgba(154,221,255,.08);
+    color:#d8f4ff;
+    font-size:13px;
+    display:none;
+  }
+  .status.error{
+    border-color: rgba(255,107,107,.35);
+    background: rgba(255,107,107,.08);
+    color:#ffd2d2;
+  }
+
+  .prebox{
+    white-space:pre-wrap;
+    background:var(--panel2);
+    border:1px solid #2b3b60;
+    border-radius:12px;
+    padding:10px;
+    font-size:12px;
+    color:var(--text);
+    margin-top:10px;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <div>
+    <h2>Detection Rules</h2>
+    <div class="small">Rule list + create + enable/disable + view + edit + save (PUT) + delete</div>
+  </div>
+  <div class="row-actions">
+    <a class="btn" href="/dashboard">← Dashboard</a>
+    <button class="btn" id="btnRefresh">Refresh</button>
+  </div>
+</div>
+
+<!-- RUN ENGINE TEST -->
+<div class="card">
+  <h3 style="margin:0 0 8px;">Rule Engine Test</h3>
+  <div class="small">Enabled rule'ları son X dakikada çalıştırır: <span class="mono">POST /api/alerts/run</span></div>
+
+  <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+    <div style="min-width:240px;">
+      <label style="margin:0 0 6px;">Minutes</label>
+      <input id="runMinutes" type="number" min="1" step="1" value="5" style="font-family:Arial; font-size:13px;">
+    </div>
+    <div style="display:flex; gap:8px; align-items:flex-end;">
+      <button class="btn" id="btnRunEngine">Run Engine</button>
+      <button class="btn" id="btnClearRun">Clear</button>
+    </div>
+  </div>
+
+  <div id="runStatus" class="status" style="margin-top:10px;"></div>
+  <div id="runResult" class="prebox" style="display:none;"></div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+    <div>
+      <h3 style="margin:0 0 6px;" id="formTitle">Yeni Rule</h3>
+      <div class="small" id="formHint">Create modu: formu doldur ve Create bas.</div>
+    </div>
+    <div class="small mono" id="modeBadge">Mode: CREATE</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <label>Rule Name</label>
+      <input id="name" placeholder="Örn: Auth Brute Force (src_ip)" style="font-family:Arial; font-size:13px;">
+
+      <label>Severity</label>
+      <select id="severity" style="font-family:Arial; font-size:13px;">
+        <option value="low">low</option>
+        <option value="medium" selected>medium</option>
+        <option value="high">high</option>
+        <option value="critical">critical</option>
+      </select>
+
+      <label>Cooldown (minutes)</label>
+      <input id="cooldown" type="number" min="0" step="1" value="5" style="font-family:Arial; font-size:13px;">
+
+      <label>Enabled</label>
+      <select id="enabled" style="font-family:Arial; font-size:13px;">
+        <option value="true" selected>true</option>
+        <option value="false">false</option>
+      </select>
+
+      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+        <button class="btn" id="btnValidate">Validate JSON</button>
+        <button class="btn" id="btnFormat">Format JSON</button>
+        <button class="btn" id="btnCreate">Create</button>
+        <button class="btn" id="btnSave" disabled>Save (Update)</button>
+        <button class="btn" id="btnCancelEdit" disabled>Cancel Edit</button>
+      </div>
+
+      <div id="statusBox" class="status"></div>
+    </div>
+
+    <div>
+      <label>JSON Spec (query_json)</label>
+      <textarea id="query" rows="16">{
+  "type": "count_threshold",
+  "group_by": "src_ip",
+  "threshold": 5,
+  "filters": {
+    "category": "auth",
+    "level": "warning",
+    "event_type": "login_fail"
+  }
+}</textarea>
+
+      <div class="small" style="margin-top:8px;">
+        Desteklenen tipler: <span class="mono">count_threshold, distinct_threshold, status_code_spike, pattern_match</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 10px;">Mevcut Rules</h3>
+
+  <div style="overflow:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width:60px;">ID</th>
+          <th style="min-width:240px;">Name</th>
+          <th style="min-width:110px;">Severity</th>
+          <th style="min-width:140px;">Enabled</th>
+          <th style="min-width:120px;">Cooldown</th>
+          <th>Query Spec</th>
+          <th style="min-width:200px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  let editRuleId = null;
+  const $ = (id) => document.getElementById(id);
+
+  function showStatus(msg, isError=false){
+    const box = $("statusBox");
+    box.style.display = "block";
+    box.className = "status" + (isError ? " error" : "");
+    box.textContent = msg;
+  }
+  function hideStatus(){
+    const box = $("statusBox");
+    box.style.display = "none";
+    box.textContent = "";
+  }
+
+  function showRunStatus(msg, isError=false){
+    const box = $("runStatus");
+    box.style.display = "block";
+    box.className = "status" + (isError ? " error" : "");
+    box.textContent = msg;
+  }
+  function hideRunStatus(){
+    const box = $("runStatus");
+    box.style.display = "none";
+    box.textContent = "";
+  }
+  function showRunResult(obj){
+    const el = $("runResult");
+    el.style.display = "block";
+    el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+  }
+  function clearRunResult(){
+    hideRunStatus();
+    const el = $("runResult");
+    el.style.display = "none";
+    el.textContent = "";
+  }
+
+  function setModeCreate(){
+    editRuleId = null;
+    $("modeBadge").textContent = "Mode: CREATE";
+    $("formTitle").textContent = "Yeni Rule";
+    $("formHint").textContent = "Create modu: formu doldur ve Create bas.";
+    $("btnCreate").disabled = false;
+    $("btnSave").disabled = true;
+    $("btnCancelEdit").disabled = true;
+  }
+  function setModeEdit(ruleId){
+    editRuleId = ruleId;
+    $("modeBadge").textContent = `Mode: EDIT (#${ruleId})`;
+    $("formTitle").textContent = `Rule Düzenle (#${ruleId})`;
+    $("formHint").textContent = "Edit modu: değiştir ve Save (Update) bas. İstersen Cancel Edit ile çık.";
+    $("btnCreate").disabled = true;
+    $("btnSave").disabled = false;
+    $("btnCancelEdit").disabled = false;
+  }
+
+  async function fetchJSON(url, opts={}) {
+    const r = await fetch(url, { credentials:"include", ...opts });
+    const text = await r.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : {}; } catch(e) { data = { raw: text }; }
+    if (!r.ok) {
+      const msg = data && (data.error || data.message) ? (data.error || data.message) : (text || r.statusText);
+      throw new Error(`HTTP ${r.status} - ${msg}`);
+    }
+    return data;
+  }
+
+  function tryParseJsonFromTextarea() {
+    const raw = $("query").value;
+    try { return JSON.parse(raw); }
+    catch (e) { throw new Error("JSON parse hatası: " + e.message); }
+  }
+
+  function pillForSeverity(sev){
+    const s = (sev||"").toLowerCase();
+    let dot = "good";
+    if (s === "high" || s === "critical") dot = "bad";
+    else if (s === "medium") dot = "warn";
+    return `<span class="pill"><span class="dot ${dot}"></span>${(sev||"-")}</span>`;
+  }
+
+  function safeStr(v){ return (v === null || v === undefined) ? "" : String(v); }
+
+  async function runEngine(){
+    hideRunStatus();
+    $("btnRunEngine").disabled = true;
+
+    const minutes = parseInt($("runMinutes").value || "5", 10);
+    if (!minutes || minutes < 1){
+      showRunStatus("Minutes en az 1 olmalı.", true);
+      $("btnRunEngine").disabled = false;
+      return;
+    }
+
+    try{
+      showRunStatus("Engine çalışıyor…");
+      const res = await fetchJSON("/api/alerts/run",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ minutes })
+      });
+      const firedCount = Array.isArray(res.fired) ? res.fired.length : 0;
+      showRunStatus(`Bitti ✅ fired=${firedCount} (window: ${res.window_from} → ${res.window_to})`);
+      showRunResult(res);
+    }catch(err){
+      showRunStatus("Run Engine hata: " + err.message, true);
+      showRunResult(err.message);
+    }finally{
+      $("btnRunEngine").disabled = false;
+    }
+  }
+
+  async function createRule(){
+    hideStatus();
+    const name = $("name").value.trim();
+    if (!name) { showStatus("Rule name boş olamaz.", true); return; }
+
+    let query;
+    try { query = tryParseJsonFromTextarea(); }
+    catch(e){ showStatus(e.message, true); return; }
+
+    const payload = {
+      name,
+      enabled: $("enabled").value === "true",
+      severity: $("severity").value,
+      cooldown_minutes: parseInt($("cooldown").value || "0", 10),
+      query
+    };
+
+    try {
+      await fetchJSON("/api/alerts/rules",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+      showStatus("Rule oluşturuldu.");
+      $("name").value = "";
+      setModeCreate();
+      await load();
+    } catch(err){
+      showStatus("Create hata: " + err.message, true);
+    }
+  }
+
+  async function saveRule(){
+    hideStatus();
+    if (!editRuleId){
+      showStatus("Edit modunda değilsin. Önce View JSON ile bir rule seç.", true);
+      return;
+    }
+
+    const name = $("name").value.trim();
+    if (!name) { showStatus("Rule name boş olamaz.", true); return; }
+
+    let query;
+    try { query = tryParseJsonFromTextarea(); }
+    catch(e){ showStatus(e.message, true); return; }
+
+    const payload = {
+      name,
+      enabled: $("enabled").value === "true",
+      severity: $("severity").value,
+      cooldown_minutes: parseInt($("cooldown").value || "0", 10),
+      query
+    };
+
+    try {
+      await fetchJSON(`/api/alerts/rules/${encodeURIComponent(editRuleId)}`,{
+        method:"PUT",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+      showStatus(`Rule #${editRuleId} güncellendi.`);
+      setModeCreate();
+      await load();
+    } catch(err){
+      showStatus("Save hata: " + err.message, true);
+    }
+  }
+
+  function cancelEdit(){
+    hideStatus();
+    $("name").value = "";
+    $("severity").value = "medium";
+    $("cooldown").value = "5";
+    $("enabled").value = "true";
+    $("query").value = `{
+  "type": "count_threshold",
+  "group_by": "src_ip",
+  "threshold": 5,
+  "filters": {
+    "category": "auth",
+    "level": "warning",
+    "event_type": "login_fail"
+  }
+}`;
+    setModeCreate();
+    showStatus("Edit iptal edildi.");
+  }
+
+  async function del(id){
+    return await fetchJSON(`/api/alerts/rules/${id}`, { method:"DELETE" });
+  }
+
+  async function getRule(id){
+    const res = await fetchJSON("/api/alerts/rules");
+    const rows = (res.data || []);
+    const found = rows.find(x => String(x.id) === String(id));
+    if (!found) throw new Error("Rule bulunamadı.");
+    return found;
+  }
+
+  async function setEnabledQuick(id, enabled){
+    return await fetchJSON(`/api/alerts/rules/${id}`,{
+      method:"PUT",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ enabled })
+    });
+  }
+
+  async function load() {
+    hideStatus();
+    $("tbody").innerHTML = `<tr><td colspan="7" class="small">Loading…</td></tr>`;
+
+    const res = await fetchJSON("/api/alerts/rules");
+    const rows = (res.data || []);
+
+    const tb = $("tbody");
+    tb.innerHTML = "";
+
+    if (!rows.length) {
+      tb.innerHTML = `<tr><td colspan="7" class="small">Henüz rule yok.</td></tr>`;
+      return;
+    }
+
+    rows.forEach(r => {
+      const enabled = !!r.enabled;
+      const cooldown = (r.cooldown_minutes !== undefined && r.cooldown_minutes !== null) ? r.cooldown_minutes : "-";
+
+      let specPreview = "";
+      try{
+        specPreview = JSON.stringify(r.query_json || {}).slice(0, 140);
+        if (JSON.stringify(r.query_json || {}).length > 140) specPreview += "…";
+      }catch(e){
+        specPreview = safeStr(r.query_json).slice(0, 140) + "…";
+      }
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono">${r.id}</td>
+        <td>
+          <div style="font-weight:700;">${safeStr(r.name || "-")}</div>
+          <div class="small mono">created_at: ${safeStr(r.created_at || "-")}</div>
+        </td>
+        <td>${pillForSeverity(r.severity)}</td>
+        <td>
+          <button class="btn" data-act="toggle" data-id="${r.id}" data-on="${enabled ? "1":"0"}">
+            ${enabled ? "enabled" : "disabled"}
+          </button>
+        </td>
+        <td class="mono">${cooldown}</td>
+        <td class="mono">${specPreview}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn" data-act="view" data-id="${r.id}">View JSON</button>
+            <button class="btn" data-act="delete" data-id="${r.id}">Delete</button>
+          </div>
+        </td>
+      `;
+      tb.appendChild(tr);
+    });
+
+    tb.querySelectorAll('button[data-act]').forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const act = btn.getAttribute("data-act");
+        const id = btn.getAttribute("data-id");
+        btn.disabled = true;
+
+        try{
+          if (act === "delete") {
+            if (!confirm(`Rule #${id} silinsin mi?`)) { btn.disabled = false; return; }
+            await del(id);
+            showStatus(`Rule #${id} silindi.`);
+            if (editRuleId && String(editRuleId) === String(id)) setModeCreate();
+            await load();
+          } else if (act === "view") {
+            const rule = await getRule(id);
+            $("name").value = safeStr(rule.name || "");
+            $("severity").value = (rule.severity || "medium").toLowerCase();
+            $("cooldown").value = safeStr(rule.cooldown_minutes ?? 15);
+            $("enabled").value = String(!!rule.enabled);
+            $("query").value = JSON.stringify(rule.query_json || {}, null, 2);
+            setModeEdit(rule.id);
+            showStatus(`Rule #${id} edit modunda yüklendi. Değiştirip Save (Update) basabilirsin.`);
+          } else if (act === "toggle") {
+            const on = btn.getAttribute("data-on") === "1";
+            await setEnabledQuick(id, !on);
+            showStatus(`Rule #${id} -> enabled=${!on} güncellendi.`);
+            await load();
+          }
+        } catch(err){
+          showStatus(`İşlem hata: ${err.message}`, true);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  $("btnRefresh").addEventListener("click", load);
+  $("btnValidate").addEventListener("click", () => {
+    hideStatus();
+    try { tryParseJsonFromTextarea(); showStatus("JSON geçerli ✅"); }
+    catch(e) { showStatus(e.message, true); }
+  });
+  $("btnFormat").addEventListener("click", () => {
+    hideStatus();
+    try {
+      const obj = tryParseJsonFromTextarea();
+      $("query").value = JSON.stringify(obj, null, 2);
+      showStatus("JSON formatlandı ✅");
+    } catch(e) {
+      showStatus(e.message, true);
+    }
+  });
+
+  $("btnCreate").addEventListener("click", createRule);
+  $("btnSave").addEventListener("click", saveRule);
+  $("btnCancelEdit").addEventListener("click", cancelEdit);
+
+  $("btnRunEngine").addEventListener("click", runEngine);
+  $("btnClearRun").addEventListener("click", clearRunResult);
+
+  setModeCreate();
+  load().catch(e => showStatus("Load hata: " + e.message, true));
+</script>
+
+</body>
+</html>

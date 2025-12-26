@@ -2,42 +2,306 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <title>Log Upload</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Upload - LogWatch</title>
+
+  <style>
+    body { margin:0; font-family:Arial,sans-serif; background:#0b0f17; color:#e6e6e6; }
+    header { padding:14px 18px; background:#121a2a; border-bottom:1px solid #22314f; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:18px; }
+    header a { color:#9ad; text-decoration:none; padding:6px 10px; border:1px solid #2b3b60; border-radius:10px; background:#0f1626; font-size:13px; }
+    header a:hover { filter:brightness(1.12); }
+
+    .wrap { padding:14px; max-width: 980px; margin: 0 auto; }
+    .card { background:#121a2a; border:1px solid #22314f; border-radius:14px; padding:14px; margin-bottom:12px; }
+    .muted { color:#9aa4b2; font-size:12px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    label { display:block; font-size:12px; color:#9aa4b2; margin-bottom:6px; }
+    input, select, button, textarea {
+      background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px;
+      padding:10px 10px; font-size:13px;
+    }
+    input[type="file"] { padding:8px; }
+    button { cursor:pointer; }
+    button:hover { filter:brightness(1.12); }
+    .grow { flex:1; min-width:220px; }
+    .btn { display:inline-flex; gap:8px; align-items:center; }
+    .ok { color:#7CFC98; }
+    .bad { color:#ff8a8a; }
+    .chip { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid #2b3b60; background:#0f1626; font-size:12px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    pre { white-space:pre-wrap; word-break:break-word; margin:0; font-family: ui-monospace, monospace; font-size:12px; }
+
+    .drop {
+      border:1px dashed #2b3b60; border-radius:14px; padding:14px; background:#0f1626;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .drop.drag { outline:2px solid #9ad; }
+    .hint { font-size:12px; color:#9aa4b2; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+    .toast {
+      margin-top:10px; padding:10px 12px; border-radius:12px; border:1px solid #22314f; background:#0f1626;
+      display:none;
+    }
+  </style>
 </head>
+
 <body>
-  <h2>Log Yükle</h2>
+<header>
+  <h1>Upload</h1>
+  <div class="row" style="align-items:center;">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/discover">Discover</a>
+    <a href="/rules">Rules</a>
+    <a href="/alerts">Alerts</a>
+  </div>
+</header>
 
-  <form action="/api/ingest/upload" method="post" enctype="multipart/form-data">
-    <label>Kaynak adı (source):</label><br>
-    <input name="source" value="nginx-web1"><br><br>
+<div class="wrap">
 
-    <label>Kaynak tipi (source_type):</label><br>
-    <select name="source_type">
-      <option value="nginx">nginx</option>
-      <option value="auth">auth</option>
-      <option value="suricata">suricata</option>
-      <option value="app">app</option>
-    </select><br><br>
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;">
+      <div>
+        <div style="font-weight:700; font-size:16px;">Log Dosyası Yükle</div>
+        <div class="muted">Dosyayı seç → source/hint seç → gönder. Sonuçları altta göreceksin.</div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btnMakeNginx">Örnek nginx.log indir</button>
+        <button class="btn" id="btnMakeAuth">Örnek auth.log indir</button>
+        <button class="btn" id="btnMakeSuricata">Örnek suricata.eve.json indir</button>
+      </div>
+    </div>
+  </div>
 
-    <label>Hint (parser seçimi):</label><br>
-    <select name="hint">
-      <option value="nginx_access">nginx_access</option>
-      <option value="linux_auth">linux_auth</option>
-      <option value="suricata_eve">suricata_eve</option>
-    </select><br><br>
+  <div class="grid">
 
-    <label>Dosya:</label><br>
-    <input type="file" name="file" /><br><br>
+    <!-- FORM -->
+    <div class="card">
+      <form id="uploadForm">
+        <div class="row">
+          <div class="grow">
+            <label>Kaynak adı (source)</label>
+            <input name="source" id="source" value="nginx-web1" placeholder="nginx-web1 / auth-host1 ..." />
+          </div>
 
-    <button type="submit">Yükle ve İşle</button>
-  </form>
+          <div style="min-width:220px;">
+            <label>Kaynak tipi (source_type)</label>
+            <select name="source_type" id="source_type">
+              <option value="nginx">nginx</option>
+              <option value="auth">auth</option>
+              <option value="suricata">suricata</option>
+              <option value="app">app</option>
+            </select>
+          </div>
 
-  <hr>
-  <p>Test için:</p>
-  <ul>
-    <li>NGINX access log satırı: <code>127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /index.html HTTP/1.1" 200 2326</code></li>
-    <li>Linux auth: <code>Failed password for invalid user root from 1.2.3.4 port 12345 ssh2</code></li>
-    <li>Suricata eve.json: JSON satırı</li>
-  </ul>
+          <div style="min-width:220px;">
+            <label>Hint (parser)</label>
+            <select name="hint" id="hint">
+              <option value="nginx_access">nginx_access</option>
+              <option value="linux_auth">linux_auth</option>
+              <option value="suricata_eve">suricata_eve</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;" class="drop" id="dropZone">
+          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:700;">Dosya Seç</div>
+              <div class="hint">Sürükle-bırak da yapabilirsin. (UTF-8 önerilir)</div>
+            </div>
+            <div>
+              <span class="chip" id="fileName">Dosya seçilmedi</span>
+            </div>
+          </div>
+
+          <input type="file" name="file" id="file" />
+
+          <div class="row">
+            <button type="submit" class="btn">Yükle ve İşle</button>
+            <button type="button" class="btn" id="btnClear">Temizle</button>
+            <span class="muted" id="statusText"></span>
+          </div>
+
+          <div class="toast" id="toast"></div>
+        </div>
+      </form>
+    </div>
+
+    <!-- HELP / PREVIEW -->
+    <div class="card">
+      <div style="font-weight:700; margin-bottom:8px;">Hızlı Test Notları</div>
+      <div class="muted" style="margin-bottom:10px;">
+        1) nginx.log yükle → Discover’da service=nginx filtrele<br>
+        2) rules sayfasından kural oluştur → Dashboard’dan Run bas → Alerts’te gör
+      </div>
+
+      <div class="card" style="background:#0f1626;">
+        <div class="muted">Örnek satırlar</div>
+        <pre id="sampleBox">NGINX:
+127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /admin HTTP/1.1" 401 2326
+AUTH:
+Failed password for invalid user root from 1.2.3.4 port 12345 ssh2
+SURICATA:
+{"timestamp":"2025-01-01T00:00:00.000000+0000","event_type":"alert","src_ip":"1.2.3.4","dest_ip":"5.6.7.8","alert":{"signature":"Test Alert","severity":2}}</pre>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  const form = document.getElementById("uploadForm");
+  const fileInput = document.getElementById("file");
+  const fileName = document.getElementById("fileName");
+  const statusText = document.getElementById("statusText");
+  const toast = document.getElementById("toast");
+  const dropZone = document.getElementById("dropZone");
+
+  function showToast(html, ok=true){
+    toast.style.display = "block";
+    toast.innerHTML = html;
+    toast.className = "toast " + (ok ? "ok" : "bad");
+  }
+  function hideToast(){ toast.style.display = "none"; toast.innerHTML=""; }
+
+  function setFileLabel(){
+    const f = fileInput.files && fileInput.files[0];
+    fileName.textContent = f ? f.name : "Dosya seçilmedi";
+  }
+
+  fileInput.addEventListener("change", () => {
+    setFileLabel();
+    hideToast();
+  });
+
+  // Drag & Drop
+  ["dragenter","dragover"].forEach(ev => {
+    dropZone.addEventListener(ev, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropZone.classList.add("drag");
+    });
+  });
+  ["dragleave","drop"].forEach(ev => {
+    dropZone.addEventListener(ev, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropZone.classList.remove("drag");
+    });
+  });
+  dropZone.addEventListener("drop", (e) => {
+    const files = e.dataTransfer.files;
+    if(files && files.length){
+      fileInput.files = files;
+      setFileLabel();
+      hideToast();
+    }
+  });
+
+  document.getElementById("btnClear").onclick = () => {
+    form.reset();
+    setFileLabel();
+    statusText.textContent = "";
+    hideToast();
+  };
+
+  async function postForm(url, fd){
+    const r = await fetch(url, { method:"POST", body: fd });
+    const txt = await r.text();
+    let js = null;
+    try { js = JSON.parse(txt); } catch {}
+    if(!r.ok){
+      throw new Error(js?.error ? JSON.stringify(js.error) : txt);
+    }
+    return js ?? { raw: txt };
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideToast();
+
+    const f = fileInput.files && fileInput.files[0];
+    if(!f){
+      showToast("❌ Dosya seçmedin.", false);
+      return;
+    }
+
+    statusText.textContent = "yükleniyor...";
+    const fd = new FormData();
+    fd.append("source", document.getElementById("source").value || "manual-upload");
+    fd.append("source_type", document.getElementById("source_type").value || "app");
+    fd.append("hint", document.getElementById("hint").value || "");
+    fd.append("file", f);
+
+    try{
+      const res = await postForm("/api/ingest/upload", fd);
+      const inserted = res.inserted ?? "-";
+      const failed = res.failed ?? "-";
+      showToast(`✅ Yüklendi<br><span class="muted">inserted</span>: <b>${inserted}</b> &nbsp; <span class="muted">failed</span>: <b>${failed}</b><br><div class="muted">Şimdi <b>Discover</b> sayfasına geçip logları filtreleyebilirsin.</div>`, true);
+      statusText.textContent = "ok";
+    }catch(err){
+      showToast("❌ Hata: " + (err.message || err), false);
+      statusText.textContent = "hata";
+    }
+  });
+
+  // Create sample files
+  function downloadText(filename, content){
+    const blob = new Blob([content], {type:"text/plain;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+
+  document.getElementById("btnMakeNginx").onclick = () => {
+    const c = [
+      '127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /admin HTTP/1.1" 401 2326',
+      '127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /admin HTTP/1.1" 401 2326',
+      '127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /admin HTTP/1.1" 401 2326',
+      '127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /login HTTP/1.1" 500 120',
+      '127.0.0.1 - - [10/Oct/2000:13:55:36 +0000] "GET /login HTTP/1.1" 500 120'
+    ].join("\n");
+    downloadText("nginx.log", c);
+    // önerilen alanları da ayarla
+    document.getElementById("source").value = "nginx-web1";
+    document.getElementById("source_type").value = "nginx";
+    document.getElementById("hint").value = "nginx_access";
+    showToast("✅ nginx.log indirildi. Şimdi dosyayı seçip gönder.", true);
+  };
+
+  document.getElementById("btnMakeAuth").onclick = () => {
+    const c = [
+      "Failed password for invalid user root from 1.2.3.4 port 12345 ssh2",
+      "Failed password for invalid user root from 1.2.3.4 port 12346 ssh2",
+      "Failed password for invalid user root from 1.2.3.4 port 12347 ssh2",
+      "Failed password for invalid user root from 1.2.3.4 port 12348 ssh2"
+    ].join("\n");
+    downloadText("auth.log", c);
+    document.getElementById("source").value = "linux-auth1";
+    document.getElementById("source_type").value = "auth";
+    document.getElementById("hint").value = "linux_auth";
+    showToast("✅ auth.log indirildi. Şimdi dosyayı seçip gönder.", true);
+  };
+
+  document.getElementById("btnMakeSuricata").onclick = () => {
+    const c = [
+      '{"timestamp":"2025-01-01T00:00:00.000000+0000","event_type":"alert","src_ip":"1.2.3.4","dest_ip":"5.6.7.8","alert":{"signature":"Test Alert","severity":2}}',
+      '{"timestamp":"2025-01-01T00:00:01.000000+0000","event_type":"alert","src_ip":"1.2.3.4","dest_ip":"5.6.7.8","alert":{"signature":"Test Alert","severity":2}}'
+    ].join("\n");
+    downloadText("suricata.eve.json", c);
+    document.getElementById("source").value = "suricata-ids1";
+    document.getElementById("source_type").value = "suricata";
+    document.getElementById("hint").value = "suricata_eve";
+    showToast("✅ suricata.eve.json indirildi. Şimdi dosyayı seçip gönder.", true);
+  };
+
+  // init
+  setFileLabel();
+</script>
+
 </body>
 </html>

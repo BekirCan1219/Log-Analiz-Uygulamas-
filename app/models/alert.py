@@ -23,6 +23,12 @@ class Alert(db.Model):
     last_seen = db.Column(db.DateTime, nullable=True, default=datetime.utcnow, index=True)
 
     hit_count = db.Column(db.Integer, nullable=False, default=1)
+    event_count = db.Column(db.Integer, nullable=False, default=1)
     event_id = db.Column(db.Integer, nullable=True)
 
     created_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+
+    # NEW: lifecycle kapanış zamanı (nullable, mevcut kayıtları bozmaz)
+    closed_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    alert_time = db.synonym("created_at")

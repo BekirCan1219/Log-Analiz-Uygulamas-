@@ -1,11 +1,17 @@
-from flask import Blueprint, request, jsonify
+# app/controllers/metrics_controller.py
 from datetime import datetime, timedelta
-from sqlalchemy import func, desc, literal_column
+
+from flask import Blueprint, request, jsonify
+from sqlalchemy import func, text
 
 from ..extensions import db
 from ..models.log_event import LogEvent
 
 metrics_bp = Blueprint("metrics", __name__, url_prefix="/api/metrics")
+
+
+def _utcnow():
+    return datetime.utcnow()
 
 
 def _parse_dt(s: str | None):
@@ -20,13 +26,14 @@ def _parse_dt(s: str | None):
 @metrics_bp.get("/summary")
 def summary():
     """
-    Basit dashboard metrikleri:
-    - total (son X saat)
-    - top services
-    - top src_ip
-    Not: ingest_time bazlıdır (test log timestamp'i eski olsa bile çalışır).
+    Dashboard metrikleri (ingest_time bazlı):
+    - total: son X saatte toplam event
+    - parse_status_counts: parse_status dağılımı
+    - top_services
+    - top_ips (src_ip)
+    - range: from/to
     """
-    time_to = _parse_dt(request.args.get("to")) or datetime.utcnow()
+    time_to = _parse_dt(request.args.get("to")) or _utcnow()
 
     hours = request.args.get("hours")
     try:
@@ -37,99 +44,119 @@ def summary():
     time_from = time_to - timedelta(hours=hours)
 
     base = db.session.query(LogEvent).filter(LogEvent.ingest_time.between(time_from, time_to))
-    total = base.count()
+    total = base.with_entities(func.count(LogEvent.id)).scalar() or 0
 
-    top_services = (
+    # parse_status dağılımı
+    ps_rows = (
+        db.session.query(LogEvent.parse_status, func.count(LogEvent.id))
+        .filter(LogEvent.ingest_time.between(time_from, time_to))
+        .group_by(LogEvent.parse_status)
+        .all()
+    )
+    parse_status_counts = []
+    for ps, c in ps_rows:
+        parse_status_counts.append({
+            "parse_status": ps if ps is not None else -1,
+            "count": int(c)
+        })
+    parse_status_counts.sort(key=lambda x: x["count"], reverse=True)
+
+    # top services
+    svc_rows = (
         db.session.query(LogEvent.service, func.count(LogEvent.id).label("c"))
         .filter(LogEvent.ingest_time.between(time_from, time_to))
         .group_by(LogEvent.service)
-        .order_by(desc("c"))
+        .order_by(func.count(LogEvent.id).desc())
         .limit(10)
         .all()
     )
+    top_services = [{"service": s or "unknown", "count": int(c)} for s, c in svc_rows]
 
-    top_ips = (
+    # top src_ip
+    ip_rows = (
         db.session.query(LogEvent.src_ip, func.count(LogEvent.id).label("c"))
         .filter(LogEvent.ingest_time.between(time_from, time_to))
-        .filter(LogEvent.src_ip.isnot(None))
         .group_by(LogEvent.src_ip)
-        .order_by(desc("c"))
+        .order_by(func.count(LogEvent.id).desc())
         .limit(10)
         .all()
     )
+    top_ips = [{"src_ip": ip or "unknown", "count": int(c)} for ip, c in ip_rows]
 
     return jsonify({
-        "success": True,
+        "total": int(total),
         "range": {"from": time_from.isoformat(), "to": time_to.isoformat()},
-        "total": total,
-        "top_services": [{"service": s, "count": int(c)} for s, c in top_services if s],
-        "top_ips": [{"src_ip": ip, "count": int(c)} for ip, c in top_ips if ip],
+        "parse_status_counts": parse_status_counts,
+        "top_services": top_services,
+        "top_ips": top_ips
     })
 
 
-@metrics_bp.get("/timeseries")
+@metrics_bp.get("/timeseries", endpoint="metrics_timeseries")
 def timeseries():
     """
-    /api/metrics/timeseries?hours=24&bucket=hour
-    /api/metrics/timeseries?hours=6&bucket=minute
-
-    MSSQL için: DATEDIFF birimi parametre olamaz, literal olmalı.
-    Bu yüzden literal_column ile SQL ifadesini sabit yazıyoruz.
+    GET /api/metrics/timeseries?hours=24&bucket=hour|minute
+    MSSQL/SQLite uyumlu time bucket.
     """
-    now = datetime.utcnow()
-
-    try:
-        hours = int(request.args.get("hours", 24))
-    except Exception:
-        hours = 24
-
-    start = now - timedelta(hours=hours)
+    time_to = _parse_dt(request.args.get("to")) or _utcnow()
+    hours = request.args.get("hours", type=int) or 24
     bucket = (request.args.get("bucket") or "hour").lower()
+    bucket = "minute" if bucket == "minute" else "hour"
 
-    # ✅ SQL Server bucket expression (literal)
+    time_from = time_to - timedelta(hours=hours)
+    dialect = db.engine.dialect.name  # "mssql" | "sqlite" | ...
+
+    # --- MSSQL: datepart parametre olamaz -> raw SQL ile sabit veriyoruz ---
+    if dialect == "mssql":
+        datepart = "minute" if bucket == "minute" else "hour"
+
+        sql = text(f"""
+            SELECT
+              DATEADD({datepart}, DATEDIFF({datepart}, 0, ingest_time), 0) AS t,
+              COUNT(id) AS c
+            FROM log_events
+            WHERE ingest_time BETWEEN :t_from AND :t_to
+            GROUP BY DATEADD({datepart}, DATEDIFF({datepart}, 0, ingest_time), 0)
+            ORDER BY t ASC
+        """)
+
+        rows = db.session.execute(sql, {"t_from": time_from, "t_to": time_to}).all()
+
+        data = []
+        for r in rows:
+            # Row objesinde attribute erişimi her zaman stabil değil -> mapping kullan
+            m = r._mapping
+            t = m.get("t")
+            c = m.get("c", 0)
+            data.append({
+                "t": t.isoformat() if hasattr(t, "isoformat") else (str(t) if t is not None else None),
+                "c": int(c)
+            })
+
+        return jsonify({
+            "range": {"from": time_from.isoformat(), "to": time_to.isoformat()},
+            "bucket": bucket,
+            "data": data
+        })
+
+    # --- SQLite: strftime ile bucket string üret ---
     if bucket == "minute":
-        bucket_expr = literal_column(
-            "DATEADD(minute, DATEDIFF(minute, 0, log_events.ingest_time), 0)"
-        )
-        bucket = "minute"
+        t_bucket = func.strftime("%Y-%m-%dT%H:%M:00", LogEvent.ingest_time)
     else:
-        bucket_expr = literal_column(
-            "DATEADD(hour, DATEDIFF(hour, 0, log_events.ingest_time), 0)"
-        )
-        bucket = "hour"
-
-    # (Opsiyonel filtreler - gerekirse dashboard'da kullanırsın)
-    service = request.args.get("service")
-    level = request.args.get("level")
-    category = request.args.get("category")
-
-    q = (
-        db.session.query(
-            bucket_expr.label("t"),
-            func.count(LogEvent.id).label("c"),
-        )
-        .select_from(LogEvent)  # ✅ log_events tablo adı/alias garanti
-        .filter(LogEvent.ingest_time.between(start, now))
-    )
-
-    if service:
-        q = q.filter(LogEvent.service == service)
-    if level:
-        q = q.filter(LogEvent.level == level)
-    if category:
-        q = q.filter(LogEvent.category == category)
+        t_bucket = func.strftime("%Y-%m-%dT%H:00:00", LogEvent.ingest_time)
 
     rows = (
-        q.group_by(bucket_expr)
-         .order_by(bucket_expr.asc())
-         .all()
+        db.session.query(t_bucket.label("t"), func.count(LogEvent.id).label("c"))
+        .filter(LogEvent.ingest_time.between(time_from, time_to))
+        .group_by(t_bucket)
+        .order_by(t_bucket.asc())
+        .all()
     )
 
-    data = [{"t": r[0].isoformat(), "c": int(r[1])} for r in rows if r[0] is not None]
+    data = [{"t": str(t), "c": int(c)} for t, c in rows]
 
     return jsonify({
-        "success": True,
+        "range": {"from": time_from.isoformat(), "to": time_to.isoformat()},
         "bucket": bucket,
-        "range": {"from": start.isoformat(), "to": now.isoformat()},
         "data": data
     })

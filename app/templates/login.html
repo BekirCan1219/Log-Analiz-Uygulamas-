@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Login</title>
+<style>
+body{
+  background:#0b0f17; color:#e6e6e6;
+  font-family:Arial;
+  display:flex; align-items:center; justify-content:center;
+  height:100vh;
+}
+.card{
+  background:#121a2a; border:1px solid #22314f;
+  border-radius:12px; padding:20px; width:300px;
+}
+input,button{
+  width:100%; padding:10px; margin-top:10px;
+  background:#0f1626; color:#e6e6e6;
+  border:1px solid #2b3b60; border-radius:10px;
+}
+.small{ color:#9aa4b2; font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h3>Login</h3>
+  <input id="u" placeholder="username">
+  <input id="p" type="password" placeholder="password">
+  <button onclick="login()">Login</button>
+  <div class="small">admin / admin123</div>
+</div>
+
+<script>
+async function login(){
+  const r = await fetch("/auth/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    credentials:"include",
+    body:JSON.stringify({
+      username: u.value,
+      password: p.value
+    })
+  });
+  if(r.ok){
+    location.href = "/dashboard";
+  }else{
+    alert("Login failed");
+  }
+}
+</script>
+
+</body>
+</html>
