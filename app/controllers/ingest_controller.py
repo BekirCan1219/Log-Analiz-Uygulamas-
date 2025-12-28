@@ -22,14 +22,40 @@ NGINX_ACCESS_RE = re.compile(
 )
 SSHD_FROM_RE = re.compile(r"\bfrom\s+(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\b", re.IGNORECASE)
 
+
+def _utcnow():
+    return datetime.utcnow()
+
+
 def _utcnow_iso():
-    return datetime.utcnow().isoformat() + "Z"
+    return _utcnow().isoformat() + "Z"
+
 
 def _safe_int(x):
     try:
         return int(x)
     except Exception:
         return None
+
+
+def _try_parse_json_line(line: str):
+    """
+    line komple JSON ise dict döndürür, değilse None.
+    Senin yeni uploadlarında message içine JSON gömülmüş geliyordu:
+    {"service":"nginx","http_status":500,...}
+    Bu fonksiyon onu yakalar.
+    """
+    if not line or not isinstance(line, str):
+        return None
+    s = line.strip()
+    if not (s.startswith("{") and s.endswith("}")):
+        return None
+    try:
+        obj = json.loads(s)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
 
 def _guess_parsed_fields(line: str, hint: str | None):
     raw = (line or "").strip()
@@ -107,19 +133,56 @@ def _guess_parsed_fields(line: str, hint: str | None):
         "parsed_at": _utcnow_iso()
     }
 
-def _merge_hint(existing_hint: str | None, parsed: dict):
+
+def _build_hint_json(original_hint: str | None, parsed: dict, mode: str):
+    """
+    hint alanına 'sadece debug metadata' bas.
+    Eskiden hint içine __parsed__ gömüyordun. Service layer bunu kolonlara basmıyorsa
+    işe yaramıyor, hatta bazı yerlerde message içine JSON gömülmesine sebep oluyor.
+    """
     base = {}
-    if existing_hint:
-        s = existing_hint.strip()
+    if original_hint:
+        s = original_hint.strip()
         if s:
-            try:
-                base = json.loads(s)
-                if not isinstance(base, dict):
-                    base = {"__hint_text__": existing_hint}
-            except Exception:
-                base = {"__hint_text__": existing_hint}
-    base["__parsed__"] = parsed
+            # hint kullanıcı metni ise sakla
+            base["hint_text"] = s
+
+    base["mode"] = mode  # "line" veya "jsonline" veya "event"
+    base["parsed"] = parsed  # debug için kalsın
     return json.dumps(base, ensure_ascii=False)
+
+
+def _normalize_from_json_obj(obj: dict):
+    """
+    JSON satırı geldiyse, bunu LogEvent alanlarına map edecek parsed üret.
+    Burada controller-side normalize yapıyoruz.
+    """
+    service = obj.get("service") or "unknown"
+    category = obj.get("category") or "general"
+    level = obj.get("level") or "info"
+    event_type = obj.get("event_type")
+    src_ip = obj.get("src_ip")
+    url = obj.get("url")
+    http_status = obj.get("http_status")
+
+    if http_status is not None:
+        http_status = _safe_int(http_status)
+
+    # message alanını temiz tut: obj içindeki message string'i
+    message = obj.get("message") or ""
+    raw_text = obj.get("raw_text") or ""
+
+    parsed = {
+        "service": service,
+        "category": category,
+        "level": level,
+        "event_type": event_type,
+        "src_ip": src_ip,
+        "http_status": http_status,
+        "url": url,
+        "parsed_at": _utcnow_iso(),
+    }
+    return parsed, message, raw_text
 
 
 @ingest_bp.get("/upload")
@@ -147,10 +210,35 @@ def upload_file():
 
     for idx, line in enumerate(lines, start=1):
         try:
-            parsed = _guess_parsed_fields(line, hint)
-            merged_hint = _merge_hint(hint, parsed)
+            # 1) Satır komple JSON ise: onu parse edip alanları ordan al
+            obj = _try_parse_json_line(line)
+            if obj:
+                parsed, msg, raw_line = _normalize_from_json_obj(obj)
+                hint_json = _build_hint_json(hint, parsed, mode="jsonline")
 
-            ev = svc.ingest_raw(source_name=source, source_type=source_type, raw=line, hint=merged_hint)
+                # svc.ingest_raw'nin imzasını bozmayalım:
+                # raw parametresine gerçek raw log'u (raw_text) bas
+                # ve message'in JSON'a dönüşmesini engellemek için raw'ı seçiyoruz
+                raw_to_store = raw_line or msg or line
+
+                ev = svc.ingest_raw(
+                    source_name=source,
+                    source_type=source_type,
+                    raw=raw_to_store,
+                    hint=hint_json
+                )
+            else:
+                # 2) Normal log satırı: regex parser ile çıkar
+                parsed = _guess_parsed_fields(line, hint)
+                hint_json = _build_hint_json(hint, parsed, mode="line")
+
+                ev = svc.ingest_raw(
+                    source_name=source,
+                    source_type=source_type,
+                    raw=line,
+                    hint=hint_json
+                )
+
             inserted += 1
 
             if len(sample) < 5:
@@ -162,20 +250,18 @@ def upload_file():
                     "src_ip": parsed.get("src_ip"),
                     "http_status": parsed.get("http_status"),
                     "url": parsed.get("url"),
+                    "event_type": parsed.get("event_type"),
                 })
 
         except Exception as e:
             failed += 1
-            # MSSQL + SQLAlchemy: hata sonrası session temizle
             try:
                 db.session.rollback()
             except Exception:
                 pass
 
-            # Konsola tam traceback bas
             current_app.logger.exception("INGEST upload failed at line=%s", idx)
 
-            # Kullanıcıya kısa hata döndür
             errors.append({
                 "line": idx,
                 "error": str(e),
@@ -199,15 +285,28 @@ def ingest_event():
         return jsonify({"success": False, "error": e.errors()}), 400
 
     try:
-        parsed = _guess_parsed_fields(payload.raw, payload.hint)
-        merged_hint = _merge_hint(payload.hint, parsed)
+        # payload.raw JSON ise önce onu kullan
+        obj = _try_parse_json_line(payload.raw)
+        if obj:
+            parsed, msg, raw_line = _normalize_from_json_obj(obj)
+            hint_json = _build_hint_json(payload.hint, parsed, mode="event-jsonline")
+            raw_to_store = raw_line or msg or payload.raw
+            ev = svc.ingest_raw(
+                source_name=payload.source,
+                source_type=payload.source_type,
+                raw=raw_to_store,
+                hint=hint_json
+            )
+        else:
+            parsed = _guess_parsed_fields(payload.raw, payload.hint)
+            hint_json = _build_hint_json(payload.hint, parsed, mode="event")
+            ev = svc.ingest_raw(
+                source_name=payload.source,
+                source_type=payload.source_type,
+                raw=payload.raw,
+                hint=hint_json
+            )
 
-        ev = svc.ingest_raw(
-            source_name=payload.source,
-            source_type=payload.source_type,
-            raw=payload.raw,
-            hint=merged_hint
-        )
         return jsonify({"success": True, "id": getattr(ev, "id", None), "parsed": parsed})
 
     except Exception as e:

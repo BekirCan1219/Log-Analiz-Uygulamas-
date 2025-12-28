@@ -6,7 +6,7 @@ from sqlalchemy import func
 
 from ..extensions import db
 from ..models.log_event import LogEvent
-from ..models.detection_rule import DetectionRule
+from ..models.alert_rule import AlertRule
 from ..models.alert import Alert
 
 
@@ -73,23 +73,68 @@ def _cooldown_minutes_value(v):
     return 15 if v is None else int(v)
 
 
+def _normalize_spec_from_rule(ar: AlertRule) -> dict:
+    """
+    1) spec_json varsa onu kullan
+    2) yoksa (geriye uyum) query_json + rule_type/type + threshold/group_by/window_minutes'dan spec üret
+    """
+    spec = _safe_json_loads(getattr(ar, "spec_json", None), default={})
+
+    # spec_json boşsa: query_json filtre olsun
+    if not isinstance(spec, dict) or not spec:
+        filters = _safe_json_loads(getattr(ar, "query_json", None), default={})
+        if not isinstance(filters, dict):
+            filters = {}
+
+        # rule_type / type kolonu varsa ordan al
+        rtype = getattr(ar, "rule_type", None)
+        if rtype is None:
+            # bazı modellerde kolon adı "type" olabilir
+            rtype = getattr(ar, "type", None)
+
+        spec = {
+            "type": rtype or "count_threshold",
+            "threshold": int(getattr(ar, "threshold", 1) or 1),
+            "group_by": getattr(ar, "group_by", "service") or "service",
+            "filters": filters,
+        }
+
+    # defaults
+    if "threshold" not in spec:
+        spec["threshold"] = int(getattr(ar, "threshold", 1) or 1)
+    if "group_by" not in spec:
+        spec["group_by"] = getattr(ar, "group_by", "service") or "service"
+    if "filters" not in spec or spec["filters"] is None:
+        spec["filters"] = {}
+
+    # per-rule window override
+    if "window_minutes" not in spec:
+        wm = getattr(ar, "window_minutes", None)
+        if wm is not None:
+            spec["window_minutes"] = int(wm)
+
+    return spec
+
+
 class AlertEngine:
     """
     Scheduler tarafından çağrılan motor.
-    - Cooldown / dedup için Alert.last_seen kullanıyoruz.
-    - İsteğe bağlı 'alert_time' alanı yoksa bile patlamamalı (fallback var).
+
+    Kritik: alerts.rule_id FK -> alert_rules.id
+    Bu yüzden engine SADECE AlertRule üzerinden çalışır.
     """
 
     def __init__(self, minutes: int = 5):
         self.minutes = max(1, int(minutes))
 
     def run_once(self):
-        window_to = _utcnow()
-        window_from = window_to - timedelta(minutes=self.minutes)
+        now = _utcnow()
+        window_to_global = now
+        window_from_global = window_to_global - timedelta(minutes=self.minutes)
 
         stats = {
-            "window_from": window_from.isoformat() + "Z",
-            "window_to": window_to.isoformat() + "Z",
+            "window_from": window_from_global.isoformat() + "Z",
+            "window_to": window_to_global.isoformat() + "Z",
             "rules_checked": 0,
             "rules_skipped": 0,
             "events_scanned": 0,
@@ -98,15 +143,36 @@ class AlertEngine:
             "errors": 0,
         }
 
-        rules = db.session.query(DetectionRule).filter(DetectionRule.enabled == True).all()
+        # Runner UI için faydalı: global window’daki toplam event
+        try:
+            stats["total_events_in_window"] = (
+                db.session.query(func.count(LogEvent.id))
+                .filter(LogEvent.ingest_time.between(window_from_global, window_to_global))
+                .scalar()
+            ) or 0
+        except Exception:
+            stats["total_events_in_window"] = 0
+
+        rules = db.session.query(AlertRule).filter(AlertRule.enabled == True).all()
+
         for rule in rules:
             stats["rules_checked"] += 1
 
-            spec = _safe_json_loads(rule.query_json, {})
+            spec = _normalize_spec_from_rule(rule)
             rtype = spec.get("type")
             if not rtype:
                 stats["rules_skipped"] += 1
                 continue
+
+            # per-rule window
+            wm = spec.get("window_minutes")
+            try:
+                wm = int(wm) if wm is not None else int(getattr(rule, "window_minutes", self.minutes) or self.minutes)
+            except Exception:
+                wm = self.minutes
+
+            window_to = now
+            window_from = window_to - timedelta(minutes=max(1, wm))
 
             try:
                 r = self._eval_rule(rule, spec, window_from, window_to) or {}
@@ -127,10 +193,10 @@ class AlertEngine:
         return stats
 
     # -----------------------
-    # Cooldown helper (FIX)
+    # Cooldown helper
     # -----------------------
     def _cooldown_hit(self, rule_id: int, group_key: str | None, now, cooldown_minutes: int):
-        cooldown = timedelta(minutes=int(cooldown_minutes or 15))
+        cooldown = timedelta(minutes=_cooldown_minutes_value(cooldown_minutes))
         since = now - cooldown
 
         q = db.session.query(Alert.id).filter(Alert.rule_id == rule_id)
@@ -146,24 +212,24 @@ class AlertEngine:
         time_col = getattr(Alert, "alert_time", None) or getattr(Alert, "last_seen") or getattr(Alert, "created_at")
         q = q.filter(time_col >= since)
 
-        # ✅ MSSQL-safe: EXISTS yerine COUNT
         return q.limit(1).count() > 0
 
     def _dedup_or_create(
-            self,
-            rule: DetectionRule,
-            group_key: str | None,
-            title: str,
-            window_from: datetime,
-            window_to: datetime,
-            details: dict | None = None,
-            representative_event_id: int | None = None,
-            event_count: int = 1,  # ✅ EKLENDİ
+        self,
+        rule: AlertRule,
+        group_key: str | None,
+        title: str,
+        window_from: datetime,
+        window_to: datetime,
+        details: dict | None = None,
+        representative_event_id: int | None = None,
+        event_count: int = 1,
     ):
         now = _utcnow()
-        cooldown = timedelta(minutes=int(rule.cooldown_minutes or 15))
+        cooldown = timedelta(minutes=_cooldown_minutes_value(getattr(rule, "cooldown_minutes", None)))
         since = now - cooldown
 
+        # ✅ KRİTİK: Alert.rule_id = AlertRule.id olmalı
         q = db.session.query(Alert).filter(Alert.rule_id == rule.id)
 
         if group_key is None:
@@ -178,7 +244,7 @@ class AlertEngine:
 
         if existing:
             existing.hit_count = (existing.hit_count or 1) + 1
-            existing.event_count = int(event_count or 1)  # ✅ MSSQL NULL FIX
+            existing.event_count = int(event_count or 1)
             existing.last_seen = now
             existing.window_from = window_from
             existing.window_to = window_to
@@ -192,9 +258,9 @@ class AlertEngine:
             return existing, False
 
         a = Alert(
-            rule_id=rule.id,
+            rule_id=rule.id,  # ✅ FK doğru
             status="open",
-            severity=rule.severity,
+            severity=getattr(rule, "severity", "medium"),
             title=title,
             group_key=group_key,
             details_json=json.dumps(details, ensure_ascii=False) if details else None,
@@ -203,7 +269,7 @@ class AlertEngine:
             first_seen=now,
             last_seen=now,
             hit_count=1,
-            event_count=int(event_count or 1),  # ✅ MSSQL NULL FIX
+            event_count=int(event_count or 1),
             event_id=representative_event_id,
         )
 
@@ -213,7 +279,7 @@ class AlertEngine:
     # -----------------------
     # Rule evaluation
     # -----------------------
-    def _eval_rule(self, rule: DetectionRule, spec: dict, window_from: datetime, window_to: datetime):
+    def _eval_rule(self, rule: AlertRule, spec: dict, window_from: datetime, window_to: datetime):
         stats = {"events_scanned": 0, "matches_found": 0, "alerts_created": 0}
 
         rtype = spec["type"]
@@ -225,7 +291,10 @@ class AlertEngine:
             if not group_by:
                 return stats
 
-            col = getattr(LogEvent, group_by)
+            col = getattr(LogEvent, group_by, None)
+            if col is None:
+                return stats
+
             agg = (
                 db.session.query(col.label("k"), func.count(LogEvent.id).label("c"))
                 .filter(LogEvent.ingest_time.between(window_from, window_to))
@@ -236,7 +305,6 @@ class AlertEngine:
             for k, c in agg.all():
                 stats["matches_found"] += 1
 
-                # ✅ STANDARD group_key (dedup garanti)
                 gk = f"{rule.id}:{rtype}:{group_by}={k}"
                 title = f"{rule.name} ({group_by}={k}) count={c}"
                 details = {"count": int(c), "group_by": group_by, "group_value": k}
@@ -249,25 +317,22 @@ class AlertEngine:
                     .first()
                 )
 
-                if self._cooldown_hit(rule.id, gk, _utcnow(), rule.cooldown_minutes):
+                if self._cooldown_hit(rule.id, gk, _utcnow(), getattr(rule, "cooldown_minutes", None)):
                     continue
 
-                _, created = (self._dedup_or_create
-                    (
-                                rule,
-                                gk,
-                                title,
-                                window_from,
-                                window_to,
-                                details,
-                                rep[0] if rep else None,
-                                event_count=int(c)
-                    )
+                _, created = self._dedup_or_create(
+                    rule,
+                    gk,
+                    title,
+                    window_from,
+                    window_to,
+                    details,
+                    rep[0] if rep else None,
+                    event_count=int(c),
                 )
                 if created:
                     stats["alerts_created"] += 1
 
-            stats["events_scanned"] += stats["matches_found"]
             return stats
 
         elif rtype == "status_code_spike":
@@ -277,7 +342,10 @@ class AlertEngine:
             min_s = int(spec.get("status_min", 500))
             max_s = int(spec.get("status_max", 599))
 
-            col_g = getattr(LogEvent, group_by)
+            col_g = getattr(LogEvent, group_by, None)
+            if col_g is None:
+                return stats
+
             agg = (
                 db.session.query(col_g.label("k"), func.count(LogEvent.id).label("c"))
                 .filter(LogEvent.ingest_time.between(window_from, window_to))
@@ -289,7 +357,6 @@ class AlertEngine:
             for k, c in agg.all():
                 stats["matches_found"] += 1
 
-                # ✅ STANDARD group_key (dedup garanti)
                 gk = f"{rule.id}:{rtype}:{group_by}={k}:{min_s}-{max_s}"
                 title = f"{rule.name} ({group_by}={k}) status[{min_s}-{max_s}] count={c}"
                 details = {
@@ -309,7 +376,7 @@ class AlertEngine:
                     .first()
                 )
 
-                if self._cooldown_hit(rule.id, gk, _utcnow(), rule.cooldown_minutes):
+                if self._cooldown_hit(rule.id, gk, _utcnow(), getattr(rule, "cooldown_minutes", None)):
                     continue
 
                 _, created = self._dedup_or_create(
@@ -320,17 +387,27 @@ class AlertEngine:
                     window_to,
                     details,
                     rep[0] if rep else None,
+                    event_count=int(c),
                 )
                 if created:
                     stats["alerts_created"] += 1
 
-            stats["events_scanned"] += stats["matches_found"]
             return stats
 
         elif rtype == "pattern_match":
             field = spec.get("field", "message")
-            pattern = spec.get("pattern") or spec.get("contains")
-            if not pattern:
+
+            # Yeni standard: patterns[] + mode(any/all)
+            patterns = spec.get("patterns")
+            mode = spec.get("mode", "any")
+
+            # Geriye uyum: pattern/contains tek string
+            if not patterns:
+                single = spec.get("pattern") or spec.get("contains")
+                if single:
+                    patterns = [single]
+
+            if not patterns:
                 return stats
 
             base = db.session.query(LogEvent).filter(LogEvent.ingest_time.between(window_from, window_to))
@@ -340,31 +417,43 @@ class AlertEngine:
             if col is None:
                 return stats
 
-            like = f"%{pattern}%"
-            base = base.filter(col.ilike(like))
+            # any/all
+            if mode == "all":
+                for p in patterns:
+                    base = base.filter(col.ilike(f"%{p}%"))
+            else:
+                # any
+                ors = []
+                for p in patterns:
+                    ors.append(col.ilike(f"%{p}%"))
+                if ors:
+                    from sqlalchemy import or_
+                    base = base.filter(or_(*ors))
 
             matched_count = base.count()
             stats["events_scanned"] += matched_count
             if matched_count <= 0:
                 return stats
 
-            if not group_by:
+            # group yoksa tek alert
+            if not group_by or group_by == "none":
                 stats["matches_found"] += 1
 
                 rep = base.order_by(LogEvent.ingest_time.desc()).with_entities(LogEvent.id).first()
 
-                # ✅ STANDARD group_key (dedup garanti)
-                gk = f"{rule.id}:{rtype}:{field}~{pattern}"
+                pat_sig = "|".join(patterns)
+                gk = f"{rule.id}:{rtype}:{field}~{pat_sig}"
 
-                title = f"{rule.name} (match: {pattern}) count={matched_count}"
+                title = f"{rule.name} (match: {pat_sig}) count={matched_count}"
                 details = {
                     "type": "pattern_match",
                     "field": field,
-                    "pattern": pattern,
-                    "count": matched_count,
+                    "patterns": patterns,
+                    "mode": mode,
+                    "count": int(matched_count),
                 }
 
-                if self._cooldown_hit(rule.id, gk, _utcnow(), rule.cooldown_minutes):
+                if self._cooldown_hit(rule.id, gk, _utcnow(), getattr(rule, "cooldown_minutes", None)):
                     return stats
 
                 _, created = self._dedup_or_create(
@@ -375,7 +464,7 @@ class AlertEngine:
                     window_to,
                     details,
                     rep[0] if rep else None,
-                    event_count=int(c)
+                    event_count=int(matched_count),  # ✅ BUG FIX: c yoktu
                 )
                 if created:
                     stats["alerts_created"] += 1
@@ -391,17 +480,18 @@ class AlertEngine:
                 .having(func.count(LogEvent.id) >= threshold)
             )
 
+            pat_sig = "|".join(patterns)
+
             for k, c in agg.all():
                 stats["matches_found"] += 1
 
-                # ✅ STANDARD group_key (dedup garanti)
-                gk = f"{rule.id}:{rtype}:{group_by}={k}|{field}~{pattern}"
-
-                title = f"{rule.name} ({group_by}={k}) match:{pattern} count={int(c)}"
+                gk = f"{rule.id}:{rtype}:{group_by}={k}|{field}~{pat_sig}"
+                title = f"{rule.name} ({group_by}={k}) match:{pat_sig} count={int(c)}"
                 details = {
                     "type": "pattern_match",
                     "field": field,
-                    "pattern": pattern,
+                    "patterns": patterns,
+                    "mode": mode,
                     "group_by": group_by,
                     "group_value": k,
                     "count": int(c),
@@ -414,7 +504,7 @@ class AlertEngine:
                     .first()
                 )
 
-                if self._cooldown_hit(rule.id, gk, _utcnow(), rule.cooldown_minutes):
+                if self._cooldown_hit(rule.id, gk, _utcnow(), getattr(rule, "cooldown_minutes", None)):
                     continue
 
                 _, created = self._dedup_or_create(
@@ -425,11 +515,12 @@ class AlertEngine:
                     window_to,
                     details,
                     rep[0] if rep else None,
-                    event_count=int(c)
+                    event_count=int(c),
                 )
                 if created:
                     stats["alerts_created"] += 1
 
             return stats
 
+        # distinct_threshold vb. eklemek istersen buraya ekle
         return stats
