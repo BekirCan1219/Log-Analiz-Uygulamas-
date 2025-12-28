@@ -74,12 +74,7 @@
       <span class="small" id="runOnceStatus"></span>
     </div>
 
-    <!-- ✅ Dashboard Ack/Close NOTE -->
-    <div class="controls" style="margin-top:10px;">
-      <label class="small" for="dashNote">Ack/Close Notu:</label>
-      <input id="dashNote" placeholder="opsiyonel not..." style="min-width:320px; flex:1;">
-      <span class="small" id="dashNoteStatus"></span>
-    </div>
+    <!-- Ack/Close NOTE kaldırıldı -->
 
     <div class="kpi">
       <div class="box">
@@ -188,6 +183,9 @@
         </thead>
         <tbody id="alertsBody"></tbody>
       </table>
+      <div class="small" style="margin-top:8px;">
+        Aksiyon alanında sadece görüntüleme var: Detay linki.
+      </div>
     </div>
   </div>
 
@@ -208,10 +206,6 @@
   const servicesBody = document.getElementById("servicesBody");
   const ipsBody = document.getElementById("ipsBody");
   const alertsBody = document.getElementById("alertsBody");
-
-  // Dashboard note UI
-  const dashNoteEl = document.getElementById("dashNote");
-  const dashNoteStatusEl = document.getElementById("dashNoteStatus");
 
   // Runner UI
   const rrMinutesEl = document.getElementById("rr_minutes");
@@ -268,14 +262,6 @@
   function setRunnerStatus(msg, ok=true){
     rrStatusEl.textContent = msg || "";
     rrStatusEl.className = "small " + (ok ? "ok" : "err");
-  }
-
-  function setDashNoteStatus(msg, ok=true){
-    dashNoteStatusEl.textContent = msg || "";
-    dashNoteStatusEl.className = "small " + (ok ? "ok" : "err");
-    if (msg){
-      setTimeout(()=>{ dashNoteStatusEl.textContent = ""; dashNoteStatusEl.className="small"; }, 2200);
-    }
   }
 
   async function loadDashboard() {
@@ -344,50 +330,11 @@
           <td><span class="chip">${esc(a.group_key || "global")}</span></td>
           <td class="right">${esc(a.hit_count || 1)}</td>
           <td>
-            <button onclick="ack(${a.id})">Ack</button>
-            <button onclick="closeAlert(${a.id})">Close</button>
+            <a class="titleLink" href="/alerts/${a.id}">Detay</a>
           </td>
         </tr>
       `);
     });
-  }
-
-  // ✅ Dashboard: note ile ack/close
-  function getNote(){
-    const s = (dashNoteEl.value || "").trim();
-    return s.length ? s : null;
-  }
-
-  async function ack(id) {
-    try{
-      const note = getNote();
-      await fetchJSON(`/api/alerts/${id}/ack`, {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ note })
-      });
-      setDashNoteStatus("Ack OK", true);
-      loadDashboard();
-    }catch(e){
-      setDashNoteStatus("Ack hata: " + e.message, false);
-      alert(e.message);
-    }
-  }
-
-  async function closeAlert(id) {
-    try{
-      const note = getNote();
-      await fetchJSON(`/api/alerts/${id}/close`, {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ note })
-      });
-      setDashNoteStatus("Close OK", true);
-      loadDashboard();
-    }catch(e){
-      setDashNoteStatus("Close hata: " + e.message, false);
-      alert(e.message);
-    }
   }
 
   refreshBtn.onclick = loadDashboard;

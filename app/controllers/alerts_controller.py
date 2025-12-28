@@ -37,20 +37,6 @@ def _safe_json_dumps(obj) -> str:
         return "{}"
 
 
-def _append_audit(details: dict | None, action: str, note: str | None):
-    details = details or {}
-    audit = details.get("audit")
-    if not isinstance(audit, list):
-        audit = []
-    audit.append({
-        "ts": _utcnow().isoformat(),
-        "action": action,
-        "note": note or ""
-    })
-    details["audit"] = audit
-    return details
-
-
 def _apply_common_filters(q, filters: dict):
     if not filters:
         return q
@@ -189,11 +175,11 @@ def normalize_rule_spec(spec: dict) -> dict:
     if rtype == "status_code_spike":
         # default 500-599
         try:
-            out["status_min"] = int(out.get("status_min", 500))
+            out["status_min"] = int(out.get("status_min, 500"))
         except Exception:
             out["status_min"] = 500
         try:
-            out["status_max"] = int(out.get("status_max", 599))
+            out["status_max"] = int(out.get("status_max, 599"))
         except Exception:
             out["status_max"] = 599
 
@@ -412,12 +398,6 @@ def _delete_rule_from_alert_rules(detection_rule_id: int):
         current_app.logger.exception("RULE_MIRROR delete failed detection_rule_id=%s", detection_rule_id)
 
 
-# ---- AUTH GUARD (KAPALI) ----
-def require_admin():
-    # Admin yönetimi istemiyorsun: herkese izin ver.
-    return True
-
-
 def _event_to_dict(e: LogEvent):
     if not e:
         return None
@@ -609,48 +589,16 @@ def list_alerts():
 
 @alerts_bp.post("/<int:alert_id>/ack")
 def ack_alert(alert_id: int):
-    a = db.session.query(Alert).get(alert_id)
-    if not a:
-        return jsonify({"success": False, "error": "alert not found"}), 404
-
-    body = request.get_json(silent=True) or {}
-    note = body.get("note")
-
-    details = _safe_json_loads(a.details_json, default={})
-    details = _append_audit(details, "ack", note)
-    a.details_json = _safe_json_dumps(details)
-
-    a.status = "ack"
-    a.last_seen = a.last_seen or _utcnow()
-
-    db.session.commit()
-    return jsonify({"success": True, "data": {"id": a.id, "status": a.status}})
+    # Admin aksiyonları tamamen kaldırıldı.
+    # UI artık çağırmamalı; yanlışlıkla çağrılırsa net yanıt ver.
+    return jsonify({"success": False, "error": "disabled"}), 410
 
 
 @alerts_bp.post("/<int:alert_id>/close")
 def close_alert(alert_id: int):
-    a = db.session.query(Alert).get(alert_id)
-    if not a:
-        return jsonify({"success": False, "error": "alert not found"}), 404
-
-    body = request.get_json(silent=True) or {}
-    note = body.get("note")
-
-    details = _safe_json_loads(a.details_json, default={})
-    details = _append_audit(details, "close", note)
-    a.details_json = _safe_json_dumps(details)
-
-    a.status = "closed"
-    if hasattr(a, "closed_at"):
-        a.closed_at = _utcnow()
-    a.last_seen = a.last_seen or _utcnow()
-
-    db.session.commit()
-
-    out = {"id": a.id, "status": a.status}
-    if hasattr(a, "closed_at") and a.closed_at:
-        out["closed_at"] = a.closed_at.isoformat()
-    return jsonify({"success": True, "data": out})
+    # Admin aksiyonları tamamen kaldırıldı.
+    # UI artık çağırmamalı; yanlışlıkla çağrılırsa net yanıt ver.
+    return jsonify({"success": False, "error": "disabled"}), 410
 
 
 # ----------------------------

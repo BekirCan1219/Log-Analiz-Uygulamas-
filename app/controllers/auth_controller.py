@@ -2,9 +2,8 @@ from flask import Blueprint, request, jsonify, session
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
-# DB/model YOK → demo auth
+# DB/model YOK → demo auth (admin tamamen kaldırıldı)
 USERS = {
-    "admin":  {"password": "admin",  "role": "admin"},
     "viewer": {"password": "viewer", "role": "viewer"},
 }
 
@@ -32,10 +31,10 @@ def login():
     if not user or user["password"] != password:
         return jsonify({"success": False, "error": "invalid credentials"}), 401
 
-    # ✅ KRİTİK: role session'a yaz
+    # session'a user yaz (role kalsın; admin yok)
     session["user"] = {
         "username": username,
-        "role": user["role"]
+        "role": user.get("role", "viewer")
     }
 
     return jsonify({"success": True, "user": session["user"]})
@@ -47,7 +46,6 @@ def logout():
 
 @auth_bp.get("/me")
 def me():
-    u = session.get("user")
-    if not u:
-        return jsonify({"authenticated": False}), 401
-    return jsonify({"authenticated": True, "user": u})
+    # Admin/role yönetimi komple kalksın istendiği için bu endpoint devre dışı.
+    # UI artık bunu çağırmamalı. İstemeden bir yerde kalmışsa net hata verir.
+    return jsonify({"success": False, "error": "disabled"}), 410

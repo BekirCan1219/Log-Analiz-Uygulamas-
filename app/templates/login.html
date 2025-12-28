@@ -26,29 +26,40 @@ input,button{
 
 <div class="card">
   <h3>Login</h3>
-  <input id="u" placeholder="username">
-  <input id="p" type="password" placeholder="password">
+  <input id="u" placeholder="username" autocomplete="username">
+  <input id="p" type="password" placeholder="password" autocomplete="current-password">
   <button onclick="login()">Login</button>
-  <div class="small">admin / admin123</div>
+  <div class="small">Demo: viewer / viewer</div>
 </div>
 
 <script>
 async function login(){
+  const username = (u.value || "").trim();
+  const password = (p.value || "").trim();
+
+  if(!username || !password){
+    alert("username/password required");
+    return;
+  }
+
   const r = await fetch("/auth/login",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     credentials:"include",
-    body:JSON.stringify({
-      username: u.value,
-      password: p.value
-    })
+    body:JSON.stringify({ username, password })
   });
+
   if(r.ok){
     location.href = "/dashboard";
   }else{
     alert("Login failed");
   }
 }
+
+// Enter ile login
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Enter") login();
+});
 </script>
 
 </body>

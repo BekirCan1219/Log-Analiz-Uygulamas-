@@ -1,251 +1,288 @@
 <!doctype html>
 <html lang="tr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Alert Detail</title>
-<style>
-  body { margin:0; font-family:Arial; background:#0b0f17; color:#e6e6e6; }
-  header { padding:16px 20px; background:#121a2a; border-bottom:1px solid #22314f;
-           display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
-  header h1 { margin:0; font-size:18px; }
-  header .links a { margin-left:8px; padding:6px 10px; border-radius:10px; border:1px solid #2b3b60;
-                    background:#0f1626; color:#9ad; text-decoration:none; font-size:13px; }
-  .container { padding:18px; max-width:1200px; margin:0 auto; }
-  .grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap:14px; }
-  @media (max-width: 980px){ .grid{ grid-template-columns:1fr; } }
-  .card { background:#121a2a; border:1px solid #22314f; border-radius:14px; padding:14px; }
-  .muted { color:#9aa4b2; font-size:12px; }
-  .k { color:#9aa4b2; font-size:12px; }
-  .v { font-size:13px; }
-  .row { display:flex; gap:14px; flex-wrap:wrap; }
-  .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-          border:1px solid #2b3b60; background:#0f1626; font-size:12px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:#888; }
-  .dot.good { background:#3ddc97; }
-  .dot.warn { background:#ffcc66; }
-  .dot.bad  { background:#ff6b6b; }
-  table { width:100%; border-collapse:collapse; }
-  th,td { border-bottom:1px solid #22314f; padding:10px 8px; text-align:left; font-size:13px; vertical-align:top; }
-  th { color:#9aa4b2; font-size:12px; }
-  tr.clickable:hover { background: rgba(154,221,255,.08); cursor:pointer; }
-  .pre { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
-         background:#0f1626; border:1px solid #2b3b60; border-radius:12px; padding:10px; font-size:12px; }
-  .details { display:none; }
-</style>
-</head>
-<body>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alert Detail | LogWatch</title>
 
+  <style>
+    :root{
+      --bg:#0b0f17;
+      --panel:#121a2a;
+      --panel2:#0f1626;
+      --border:#22314f;
+      --text:#e6e6e6;
+      --muted:#9aa4b2;
+      --link:#9ad;
+      --good:#3ddc97;
+      --warn:#ffcc66;
+      --bad:#ff6b6b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    *{ box-sizing:border-box; }
+    body { margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+    header { padding:16px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:14px; }
+    header h1 { margin:0; font-size:18px; letter-spacing:.2px; }
+    header .links a { margin-left:10px; padding:6px 10px; border-radius:10px; border:1px solid #2b3b60; background:var(--panel2); color:var(--link); text-decoration:none; font-size:13px; }
+    header .links a:hover { filter:brightness(1.08); }
+
+    .container { padding:18px; max-width:1200px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns: 1.2fr .8fr; gap:14px; }
+    @media (max-width: 980px){ .grid{ grid-template-columns:1fr; } }
+
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .card h2 { margin:0 0 10px; font-size:15px; color:#d7e2ff; }
+    .muted { color:var(--muted); }
+    .row { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; }
+    .kv { display:flex; gap:8px; align-items:baseline; }
+    .k { color:var(--muted); font-size:12px; }
+    .v { font-size:13px; }
+    .pill { font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid #2b3b60; background:var(--panel2); }
+    .pill.good{ border-color:rgba(61,220,151,.35); }
+    .pill.warn{ border-color:rgba(255,204,102,.35); }
+    .pill.bad { border-color:rgba(255,107,107,.35); }
+
+    .table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid var(--border); }
+    .table th, .table td { padding:10px 10px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:top; }
+    .table th { background:rgba(15,22,38,.7); color:#cfe0ff; text-align:left; font-weight:600; }
+    .table tr:last-child td{ border-bottom:none; }
+    .table tr:hover td{ background:rgba(15,22,38,.35); cursor:pointer; }
+
+    .expand { display:none; padding:10px; border-top:1px dashed #2b3b60; background:rgba(15,22,38,.35); }
+    .pre { white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:12px; margin:0; color:#dbe7ff; }
+    .pre.muted { color:#b7c2d6; }
+
+    .statusline { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px; }
+    .right { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+
+    .err { color: var(--bad); font-size:13px; }
+    .small { font-size:12px; }
+  </style>
+</head>
+
+<body>
 <header>
-  <h1>Alert Detail</h1>
+  <div>
+    <h1>LogWatch • Alert Detail</h1>
+    <div class="muted small">Read-only görüntüleme.</div>
+  </div>
   <div class="links">
     <a href="/dashboard">Dashboard</a>
     <a href="/alerts">Alerts</a>
+    <a href="/discover">Discover</a>
   </div>
 </header>
 
 <div class="container">
+  <div id="topError" class="err" style="display:none;"></div>
+
   <div class="grid">
+    <!-- LEFT -->
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:flex-start;">
-        <div style="min-width:240px;">
-          <div class="muted">Title</div>
-          <div id="title" style="font-size:18px; font-weight:700; margin-top:4px;">-</div>
-          <div class="muted" style="margin-top:6px;">Alert ID: <span class="v" id="aid">-</span> | Rule ID: <span class="v" id="rid">-</span></div>
-        </div>
-
-        <div class="row" style="gap:10px;">
-          <span class="pill"><span class="dot" id="sevDot"></span><span id="severity">-</span></span>
-          <span class="pill"><span class="dot" id="stDot"></span><span id="status">-</span></span>
+      <div class="statusline">
+        <h2 style="margin:0;">Alert</h2>
+        <div class="right">
+          <span id="pillStatus" class="pill">status</span>
+          <span id="pillSev" class="pill">severity</span>
         </div>
       </div>
 
-      <div style="margin-top:14px;" class="row">
-        <div style="flex:1; min-width:220px;">
-          <div class="k">Group Key</div>
-          <div class="v" id="group_key">-</div>
-        </div>
-        <div style="flex:1; min-width:220px;">
-          <div class="k">Window</div>
-          <div class="v"><span id="w_from">-</span> → <span id="w_to">-</span></div>
-        </div>
-        <div style="flex:1; min-width:160px;">
-          <div class="k">Hit Count</div>
-          <div class="v" id="hit_count">-</div>
-        </div>
+      <div class="row" style="margin-bottom:10px;">
+        <div class="kv"><div class="k">ID</div><div id="aId" class="v">-</div></div>
+        <div class="kv"><div class="k">Title</div><div id="aTitle" class="v">-</div></div>
+        <div class="kv"><div class="k">Rule</div><div id="aRule" class="v">-</div></div>
+        <div class="kv"><div class="k">Group</div><div id="aGroup" class="v">-</div></div>
       </div>
 
-      <div style="margin-top:14px;" class="row">
-        <div style="flex:1; min-width:220px;">
-          <div class="k">First Seen</div>
-          <div class="v" id="first_seen">-</div>
-        </div>
-        <div style="flex:1; min-width:220px;">
-          <div class="k">Last Seen</div>
-          <div class="v" id="last_seen">-</div>
-        </div>
-        <div style="flex:1; min-width:220px;">
-          <div class="k">Closed At</div>
-          <div class="v" id="closed_at">-</div>
-        </div>
+      <div class="row" style="margin-bottom:10px;">
+        <div class="kv"><div class="k">First Seen</div><div id="aFirst" class="v">-</div></div>
+        <div class="kv"><div class="k">Last Seen</div><div id="aLast" class="v">-</div></div>
+        <div class="kv"><div class="k">Hit Count</div><div id="aHits" class="v">-</div></div>
+        <div class="kv"><div class="k">Event Count</div><div id="aEventCount" class="v">-</div></div>
       </div>
 
-      <!-- ✅ adminActions BLOĞU KALDIRILDI -->
-    </div>
-
-    <!-- ✅ Audit Trail kartı da kaldırıldı (admin aksiyonları yoksa anlamı kalmıyor) -->
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Details</h3>
-      <div class="muted" style="margin-bottom:10px;">Alert details JSON</div>
-      <div id="detailsJson" class="pre">-</div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:14px;">
-    <div class="row" style="justify-content:space-between; align-items:center;">
-      <h3 style="margin:0;">Related Events</h3>
-      <div class="muted">Satıra tıkla → detay aç/kapat</div>
-    </div>
-
-    <div style="overflow:auto; margin-top:10px;">
-      <table>
+      <h2 style="margin-top:14px;">Related Events</h2>
+      <table class="table" id="eventsTable">
         <thead>
           <tr>
-            <th style="min-width:90px;">Event ID</th>
-            <th style="min-width:180px;">Ingest Time</th>
-            <th style="min-width:110px;">Service</th>
-            <th style="min-width:90px;">Level</th>
-            <th style="min-width:100px;">Src IP</th>
-            <th style="min-width:90px;">Status</th>
+            <th style="width:170px;">Time</th>
+            <th style="width:90px;">Service</th>
+            <th style="width:90px;">Level</th>
             <th>Message</th>
           </tr>
         </thead>
-        <tbody id="events"></tbody>
+        <tbody id="eventsTbody">
+          <tr><td colspan="4" class="muted">Yükleniyor…</td></tr>
+        </tbody>
       </table>
+
+      <div class="muted small" style="margin-top:10px;">
+        Satıra tıkla → raw/parsed detay açılır.
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="card" style="margin-bottom:14px;">
+        <h2>Details JSON</h2>
+        <pre id="detailsJson" class="pre muted">{}</pre>
+      </div>
+
+      <div class="card">
+        <h2>Audit Trail</h2>
+        <div class="muted small" style="margin-bottom:10px;">
+          Bu alan yalnızca görüntüleme içindir.
+        </div>
+        <pre id="auditJson" class="pre muted">[]</pre>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-  const ALERT_ID = {{ alert_id|tojson }};
+  const alertId = (() => {
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1];
+  })();
 
-  function sevDotClass(sev){
-    const s = (sev||"").toLowerCase();
+  function showTopError(msg){
+    const el = document.getElementById("topError");
+    el.textContent = msg || "Hata";
+    el.style.display = "block";
+  }
+
+  function pill(el, text, kind){
+    el.textContent = text ?? "-";
+    el.classList.remove("good","warn","bad");
+    if(kind) el.classList.add(kind);
+  }
+
+  function sevKind(sev){
+    const s = String(sev || "").toLowerCase();
     if (s === "high" || s === "critical") return "bad";
-    if (s === "medium") return "warn";
+    if (s === "medium" || s === "warn") return "warn";
     return "good";
   }
 
-  function stDotClass(st){
-    const s = (st||"").toLowerCase();
+  function statusKind(st){
+    const s = String(st || "").toLowerCase();
+    if (s === "open") return "warn";
     if (s === "closed") return "good";
     if (s === "ack") return "warn";
-    return "bad";
+    return "";
   }
 
-  async function fetchJSON(url, opts={}){
-    const r = await fetch(url, { credentials:"include", ...opts });
-    const t = await r.text();
-    let j = {};
-    try{ j = t ? JSON.parse(t) : {}; }catch(e){ j = { raw: t }; }
-    if(!r.ok){
-      const msg = j.error || j.message || t || r.statusText;
-      throw new Error(`HTTP ${r.status} - ${msg}`);
+  function fmt(v){
+    if(v === null || v === undefined) return "-";
+    return String(v);
+  }
+
+  function safeJson(v, fallback){
+    try{
+      if (typeof v === "string") return JSON.parse(v);
+      if (typeof v === "object") return v ?? fallback;
+      return fallback;
+    }catch(e){
+      return fallback;
     }
-    return j;
   }
 
-  function rowHtml(e){
-    const msg = (e.message || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    return `
-      <tr class="clickable" data-eid="${e.id}">
-        <td class="mono">${e.id}</td>
-        <td>${e.ingest_time || "-"}</td>
-        <td>${e.service || "-"}</td>
-        <td>${e.level || "-"}</td>
-        <td>${e.src_ip || "-"}</td>
-        <td>${(e.http_status ?? "-")}</td>
-        <td>${msg}</td>
-      </tr>
-      <tr class="details" id="d_${e.id}">
-        <td colspan="7">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div>
-              <div class="muted">raw_text</div>
-              <div class="pre">${(e.raw_text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;") || "-"}</div>
-            </div>
-            <div>
-              <div class="muted">parsed fields</div>
-              <div class="pre">${JSON.stringify({
-                id: e.id,
-                ingest_time: e.ingest_time,
-                service: e.service,
-                level: e.level,
-                category: e.category,
-                parse_status: e.parse_status,
-                event_type: e.event_type,
-                src_ip: e.src_ip,
-                url: e.url,
-                http_status: e.http_status,
-                message: e.message
-              }, null, 2).replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>
-            </div>
-          </div>
-        </td>
-      </tr>
+  function buildEventRow(e){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${fmt(e.event_time || e.timestamp || e.ingest_time)}</td>
+      <td>${fmt(e.service)}</td>
+      <td>${fmt(e.level)}</td>
+      <td>${fmt(e.message)}</td>
     `;
-  }
 
-  function wireExpand(){
-    document.getElementById("events").addEventListener("click", (ev)=>{
-      const tr = ev.target.closest("tr.clickable");
-      if(!tr) return;
-      const id = tr.getAttribute("data-eid");
-      const detailRow = document.getElementById("d_" + id);
-      if(!detailRow) return;
-      detailRow.style.display = (detailRow.style.display === "table-row") ? "none" : "table-row";
+    const expandTr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    const expand = document.createElement("div");
+    expand.className = "expand";
+
+    const raw = safeJson(e.raw_json ?? e.raw ?? null, null);
+    const parsed = safeJson(e.parsed_json ?? e.parsed ?? null, null);
+
+    const rawText = raw ? JSON.stringify(raw, null, 2) : fmt(e.raw_text || e.raw_line || "");
+    const parsedText = parsed ? JSON.stringify(parsed, null, 2) : (e.parsed_text ? fmt(e.parsed_text) : "");
+
+    expand.innerHTML = `
+      <div class="muted small" style="margin-bottom:6px;">Raw</div>
+      <pre class="pre">${rawText ? rawText : "-"}</pre>
+      <div class="muted small" style="margin:10px 0 6px;">Parsed</div>
+      <pre class="pre muted">${parsedText ? parsedText : "-"}</pre>
+    `;
+    td.appendChild(expand);
+    expandTr.appendChild(td);
+
+    tr.addEventListener("click", () => {
+      const isOpen = expand.style.display === "block";
+      expand.style.display = isOpen ? "none" : "block";
+      expandTr.style.display = isOpen ? "none" : "table-row";
     });
+
+    expandTr.style.display = "none";
+    return { tr, expandTr, expand };
   }
 
-  async function load(){
-    const res = await fetchJSON(`/api/alerts/${ALERT_ID}`);
-    const a = res.alert;
-
-    document.getElementById("aid").textContent = a.id;
-    document.getElementById("rid").textContent = a.rule_id ?? "-";
-    document.getElementById("title").textContent = a.title || "-";
-    document.getElementById("severity").textContent = a.severity || "-";
-    document.getElementById("status").textContent = a.status || "-";
-    document.getElementById("group_key").textContent = a.group_key || "-";
-    document.getElementById("w_from").textContent = a.window_from || "-";
-    document.getElementById("w_to").textContent = a.window_to || "-";
-    document.getElementById("hit_count").textContent = a.hit_count ?? "-";
-    document.getElementById("first_seen").textContent = a.first_seen || "-";
-    document.getElementById("last_seen").textContent = a.last_seen || "-";
-    document.getElementById("closed_at").textContent = a.closed_at || "-";
-
-    const sevDot = document.getElementById("sevDot");
-    sevDot.className = "dot " + sevDotClass(a.severity);
-
-    const stDot = document.getElementById("stDot");
-    stDot.className = "dot " + stDotClass(a.status);
-
-    // details json göster
-    document.getElementById("detailsJson").textContent = JSON.stringify(a.details ?? {}, null, 2);
-
-    const tb = document.getElementById("events");
-    const events = res.related_events || [];
-    if(events.length === 0){
-      tb.innerHTML = `<tr><td colspan="7" class="muted">İlgili event bulunamadı.</td></tr>`;
-    }else{
-      tb.innerHTML = events.map(rowHtml).join("");
+  async function loadAlert(){
+    const res = await fetch(`/api/alerts/${encodeURIComponent(alertId)}`, { credentials: "include" });
+    const js = await res.json().catch(() => null);
+    if(!res.ok || !js || js.success === false){
+      throw new Error((js && js.error) ? js.error : `Alert yüklenemedi (${res.status})`);
     }
-
-    wireExpand();
+    return js;
   }
 
-  load().catch(e => console.error(e));
-</script>
+  async function render(){
+    try{
+      const data = await loadAlert();
+      const a = data.alert || data;
 
+      document.getElementById("aId").textContent = fmt(a.id);
+      document.getElementById("aTitle").textContent = fmt(a.title);
+      document.getElementById("aRule").textContent = fmt(a.rule_id ?? a.rule_name ?? "-");
+      document.getElementById("aGroup").textContent = fmt(a.group_key ?? "-");
+      document.getElementById("aFirst").textContent = fmt(a.first_seen);
+      document.getElementById("aLast").textContent = fmt(a.last_seen);
+      document.getElementById("aHits").textContent = fmt(a.hit_count);
+      document.getElementById("aEventCount").textContent = fmt(a.event_count);
+
+      pill(document.getElementById("pillStatus"), fmt(a.status), statusKind(a.status));
+      pill(document.getElementById("pillSev"), fmt(a.severity), sevKind(a.severity));
+
+      // Backend: details -> dict (a.details) döndürüyorsun.
+      // Yine de string gelirse diye safeJson bıraktık.
+      const detailsObj = safeJson(a.details_json ?? a.details, {});
+      document.getElementById("detailsJson").textContent = JSON.stringify(detailsObj || {}, null, 2);
+
+      // Audit: details.audit içinden oku (append_audit burada tutuluyordu)
+      const auditArr = (detailsObj && Array.isArray(detailsObj.audit)) ? detailsObj.audit : [];
+      document.getElementById("auditJson").textContent = JSON.stringify(auditArr, null, 2);
+
+      const evs = data.related_events || data.events || [];
+      const tbody = document.getElementById("eventsTbody");
+      tbody.innerHTML = "";
+      if(!evs.length){
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">Event bulunamadı.</td></tr>`;
+        return;
+      }
+
+      for(const e of evs){
+        const { tr, expandTr } = buildEventRow(e);
+        tbody.appendChild(tr);
+        tbody.appendChild(expandTr);
+      }
+    }catch(err){
+      showTopError(err.message || String(err));
+      const tbody = document.getElementById("eventsTbody");
+      if(tbody) tbody.innerHTML = `<tr><td colspan="4" class="muted">Yükleme hatası.</td></tr>`;
+    }
+  }
+
+  render();
+</script>
 </body>
 </html>

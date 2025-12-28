@@ -90,10 +90,7 @@
 <div class="card">
   <div class="row" style="justify-content:space-between;">
     <div class="small" id="meta">-</div>
-    <div class="row">
-      <span class="small">Opsiyonel not:</span>
-      <input id="note" placeholder="ack/close notu (opsiyonel)" style="min-width:260px;">
-    </div>
+    <!-- Opsiyonel not kaldırıldı -->
   </div>
 
   <div id="msg" class="small" style="margin-top:8px;"></div>
@@ -106,7 +103,7 @@
         <th style="width:90px;">Rule</th>
         <th style="width:220px;">Group</th>
         <th class="right" style="width:70px;">Hits</th>
-        <th class="right" style="width:240px;">Action</th>
+        <th class="right" style="width:120px;">Action</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -163,13 +160,6 @@ function normJSON(v){
   return v;
 }
 
-function removeDrilldown(tb, alertId){
-  const drill = tb.querySelector(`tr.drill-row[data-alert-id="${alertId}"]`);
-  if (drill) drill.remove();
-  const row = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
-  if (row) row.classList.remove("expanded");
-}
-
 function closeOtherDrilldowns(tb, keepAlertId){
   tb.querySelectorAll("tr.drill-row").forEach(tr=>{
     const aid = tr.getAttribute("data-alert-id");
@@ -179,71 +169,6 @@ function closeOtherDrilldowns(tb, keepAlertId){
     const aid = tr.getAttribute("data-alert-id");
     if (String(aid) !== String(keepAlertId)) tr.classList.remove("expanded");
   });
-}
-
-function renderDrilldownRow(tb, alertObj){
-  const alertId = alertObj.id;
-  tb.insertAdjacentHTML("beforeend", `
-    <tr class="drill-row" data-alert-id="${esc(alertId)}">
-      <td colspan="6">
-        <div class="drillWrap" id="drill-${esc(alertId)}">
-          <div class="drillHead">
-            <div class="drillTitle">
-              <span class="badge">Alert #${esc(alertId)}</span>
-              <span class="badge">status=${esc(alertObj.status || "-")}</span>
-              <span class="badge">severity=${esc(alertObj.severity || "-")}</span>
-              <span class="badge">hits=${esc(alertObj.hit_count ?? 0)}</span>
-            </div>
-            <div class="row">
-              <button class="miniBtn" onclick="event.stopPropagation(); refreshEvents(${alertId});">Events Yenile</button>
-              <a href="/alerts/${esc(alertId)}" onclick="event.stopPropagation();">Detay Sayfa</a>
-            </div>
-          </div>
-
-          <div id="drillMsg-${esc(alertId)}" class="small loading">Loading events...</div>
-
-          <div class="eventsBox" style="margin-top:10px;">
-            <div class="eventsHdr">
-              <div class="small">Related Events (limit=50) · satıra tıkla → raw/parsed aç</div>
-              <div class="small" id="eventsMeta-${esc(alertId)}">-</div>
-            </div>
-            <div style="overflow:auto;">
-              <table class="eventsTable">
-                <thead>
-                  <tr>
-                    <th style="width:170px;">ingest_time</th>
-                    <th style="width:110px;">service</th>
-                    <th style="width:90px;">level</th>
-                    <th style="width:110px;">event_type</th>
-                    <th>message</th>
-                    <th style="width:120px;">src_ip</th>
-                    <th style="width:90px;">http</th>
-                  </tr>
-                </thead>
-                <tbody id="eventsTbody-${esc(alertId)}">
-                  <tr><td colspan="7" class="small loading">Loading...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div id="eventDetail-${esc(alertId)}" class="preBox" style="margin-top:10px;">
-            <div class="twoCol">
-              <div>
-                <div class="small" style="margin-bottom:6px;">raw_text</div>
-                <pre id="rawPre-${esc(alertId)}"></pre>
-              </div>
-              <div>
-                <div class="small" style="margin-bottom:6px;">parsed (JSON)</div>
-                <pre id="parsedPre-${esc(alertId)}"></pre>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </td>
-    </tr>
-  `);
 }
 
 async function refreshEvents(alertId){
@@ -287,7 +212,6 @@ async function refreshEvents(alertId){
       const srcip = ev.src_ip || ev.client_ip || "";
       const http = (ev.http_status !== undefined && ev.http_status !== null) ? String(ev.http_status) : (ev.status || "");
 
-      // raw & parsed alanları esnek: raw_text / raw / message; parsed alanları: fields / parsed / extra_json / data
       const rawText = ev.raw_text ?? ev.raw ?? ev.rawline ?? ev.line ?? ev.message ?? "";
       const parsedObj = normJSON(ev.parsed ?? ev.fields ?? ev.extra_json ?? ev.data ?? ev.json ?? null);
 
@@ -303,12 +227,10 @@ async function refreshEvents(alertId){
         </tr>
       `);
 
-      // event objesini DOM'a bağlamanın en pratik yolu: window cache
       window.__evCache = window.__evCache || {};
       window.__evCache[`${alertId}:${idx}`] = { rawText, parsedObj, ev };
     });
 
-    // click handler: delegate
     tbEl.querySelectorAll("tr.evRow").forEach(tr=>{
       tr.addEventListener("click", (e)=>{
         e.stopPropagation();
@@ -317,14 +239,11 @@ async function refreshEvents(alertId){
         const item = (window.__evCache || {})[key];
         if (!item) return;
 
-        // toggle detail
         const box = document.getElementById(`eventDetail-${alertId}`);
         const raw = document.getElementById(`rawPre-${alertId}`);
         const parsed = document.getElementById(`parsedPre-${alertId}`);
-
         if (!box || !raw || !parsed) return;
 
-        // Eğer aynı event tekrar tıklandıysa kapat
         const currentlyOpenKey = box.getAttribute("data-open-key");
         if (box.classList.contains("open") && currentlyOpenKey === key){
           box.classList.remove("open");
@@ -354,22 +273,17 @@ async function toggleAlertDrilldown(alertObj){
 
   const existing = tb.querySelector(`tr.drill-row[data-alert-id="${alertId}"]`);
   if (existing){
-    // collapse
     existing.remove();
     const row = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
     if (row) row.classList.remove("expanded");
     return;
   }
 
-  // tek bir drilldown açık kalsın (isteğe bağlı) -> kullanıcı için daha temiz
   closeOtherDrilldowns(tb, alertId);
 
-  // drill row'u, alert satırının hemen altına insert etmek için:
-  // 1) alert row'u bul
   const alertRow = tb.querySelector(`tr.alert-row[data-alert-id="${alertId}"]`);
   if (!alertRow) return;
 
-  // 2) drill row html'ini alert row'un hemen sonrasına ekle
   alertRow.insertAdjacentHTML("afterend", `
     <tr class="drill-row" data-alert-id="${esc(alertId)}">
       <td colspan="6">
@@ -433,8 +347,6 @@ async function toggleAlertDrilldown(alertObj){
   `);
 
   alertRow.classList.add("expanded");
-
-  // events'i çek
   await refreshEvents(alertId);
 }
 
@@ -465,9 +377,8 @@ async function load(){
     const t = pickTime(a);
     const tText = t ? new Date(t).toLocaleString() : "-";
 
-    // satır click -> drilldown toggle
     tb.insertAdjacentHTML("beforeend",`
-      <tr class="alert-row alert-row-${esc(a.id)} alert-row" data-alert-id="${esc(a.id)}">
+      <tr class="alert-row" data-alert-id="${esc(a.id)}">
         <td class="small">${esc(tText)}</td>
         <td>
           <b>${esc(a.title || "-")}</b>
@@ -478,8 +389,6 @@ async function load(){
         <td class="right">${esc(a.hit_count ?? 0)}</td>
         <td class="right">
           <a href="/alerts/${esc(a.id)}" onclick="event.stopPropagation();">Detay</a>
-          <button onclick="event.stopPropagation(); ack(${a.id});">Ack</button>
-          <button onclick="event.stopPropagation(); closeA(${a.id});">Close</button>
         </td>
       </tr>
     `);
@@ -491,36 +400,6 @@ async function load(){
       });
     }
   });
-}
-
-async function ack(id){
-  const note = document.getElementById("note").value || null;
-  try{
-    await fetchJSON(`/api/alerts/${id}/ack`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({note})
-    });
-    setMsg("Ack OK", true);
-    load();
-  }catch(e){
-    setMsg("Ack hata: " + e.message, false);
-  }
-}
-
-async function closeA(id){
-  const note = document.getElementById("note").value || null;
-  try{
-    await fetchJSON(`/api/alerts/${id}/close`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({note})
-    });
-    setMsg("Close OK", true);
-    load();
-  }catch(e){
-    setMsg("Close hata: " + e.message, false);
-  }
 }
 
 document.getElementById("status").addEventListener("change", load);
