@@ -17,7 +17,8 @@
     .card { background:#121a2a; border:1px solid #22314f; border-radius:14px; padding:14px; margin-bottom:14px; }
     .card h3 { margin:0 0 10px; font-size:16px; }
     .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    select, button { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; cursor:pointer; }
+    select, button, input { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; cursor:pointer; }
+    input { cursor:text; }
     button:hover { filter:brightness(1.15); }
     .kpi { display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:flex-start; }
     .kpi .box { background:#0f1626; border:1px solid #22314f; border-radius:12px; padding:10px 14px; min-width:160px; }
@@ -32,9 +33,13 @@
     .small { font-size:12px; color:#9aa4b2; }
     canvas { max-height:280px; }
 
-    /* title link */
     .titleLink { color:#9ad; text-decoration:none; }
     .titleLink:hover { text-decoration:underline; }
+
+    .pill { display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid #22314f; background:#0f1626; font-size:12px; }
+    .ok { color:#b7ffb4; }
+    .err { color:#ffb4b4; }
+    pre { margin:0; white-space:pre-wrap; word-break:break-word; background:#0b0f17; border:1px solid #22314f; border-radius:12px; padding:10px; font-size:12px; }
   </style>
 </head>
 
@@ -69,6 +74,13 @@
       <span class="small" id="runOnceStatus"></span>
     </div>
 
+    <!-- ✅ Dashboard Ack/Close NOTE -->
+    <div class="controls" style="margin-top:10px;">
+      <label class="small" for="dashNote">Ack/Close Notu:</label>
+      <input id="dashNote" placeholder="opsiyonel not..." style="min-width:320px; flex:1;">
+      <span class="small" id="dashNoteStatus"></span>
+    </div>
+
     <div class="kpi">
       <div class="box">
         <div class="small">Toplam Log</div>
@@ -87,6 +99,54 @@
         <div class="small">Parse Status</div>
         <div class="small" id="parseChips">-</div>
       </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Run Rules (Manual)</h3>
+    <div class="controls">
+      <label class="small">minutes:</label>
+      <select id="rr_minutes">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+      </select>
+
+      <label class="small" style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="rr_use_latest" checked>
+        use_latest
+      </label>
+
+      <label class="small" style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="rr_debug">
+        debug
+      </label>
+
+      <button id="rr_runBtn">Run</button>
+      <button id="rr_openAlertsBtn" onclick="window.open('/api/alerts?status=open','_blank')">Open Alerts JSON</button>
+
+      <span class="small" id="rr_status"></span>
+    </div>
+
+    <div id="rr_summary" style="margin-top:12px; display:none;">
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <span class="pill">total_events_in_window: <b id="rr_total">-</b></span>
+        <span class="pill">rules_checked: <b id="rr_rules">-</b></span>
+        <span class="pill">matches_found: <b id="rr_matches">-</b></span>
+        <span class="pill">alerts_created: <b id="rr_created">-</b></span>
+        <span class="pill">errors: <b id="rr_errors">-</b></span>
+      </div>
+
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer; color:#9ad; font-size:13px; padding:6px 10px; border:1px solid #2b3b60; border-radius:10px; background:#0f1626; display:inline-block;">
+          Raw Response
+        </summary>
+        <div style="margin-top:10px;">
+          <pre id="rr_raw"></pre>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -149,14 +209,33 @@
   const ipsBody = document.getElementById("ipsBody");
   const alertsBody = document.getElementById("alertsBody");
 
+  // Dashboard note UI
+  const dashNoteEl = document.getElementById("dashNote");
+  const dashNoteStatusEl = document.getElementById("dashNoteStatus");
+
+  // Runner UI
+  const rrMinutesEl = document.getElementById("rr_minutes");
+  const rrUseLatestEl = document.getElementById("rr_use_latest");
+  const rrDebugEl = document.getElementById("rr_debug");
+  const rrRunBtn = document.getElementById("rr_runBtn");
+  const rrStatusEl = document.getElementById("rr_status");
+  const rrSummaryEl = document.getElementById("rr_summary");
+  const rrTotalEl = document.getElementById("rr_total");
+  const rrRulesEl = document.getElementById("rr_rules");
+  const rrMatchesEl = document.getElementById("rr_matches");
+  const rrCreatedEl = document.getElementById("rr_created");
+  const rrErrorsEl = document.getElementById("rr_errors");
+  const rrRawEl = document.getElementById("rr_raw");
+
   let volumeChart = null;
 
   async function fetchJSON(url, opts={}) {
-    const r = await fetch(url, opts);
+    const finalOpts = Object.assign({ credentials: "include" }, opts);
+    const r = await fetch(url, finalOpts);
     const text = await r.text();
     let js = null;
     try { js = JSON.parse(text); } catch {}
-    if (!r.ok) throw new Error(js?.error ? JSON.stringify(js.error) : text);
+    if (!r.ok) throw new Error(js?.error ? (typeof js.error === "string" ? js.error : JSON.stringify(js.error)) : text);
     return js ?? {};
   }
 
@@ -178,7 +257,25 @@
 
   function esc(s){
     if (s === null || s === undefined) return "";
-    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#39;");
+  }
+
+  function setRunnerStatus(msg, ok=true){
+    rrStatusEl.textContent = msg || "";
+    rrStatusEl.className = "small " + (ok ? "ok" : "err");
+  }
+
+  function setDashNoteStatus(msg, ok=true){
+    dashNoteStatusEl.textContent = msg || "";
+    dashNoteStatusEl.className = "small " + (ok ? "ok" : "err");
+    if (msg){
+      setTimeout(()=>{ dashNoteStatusEl.textContent = ""; dashNoteStatusEl.className="small"; }, 2200);
+    }
   }
 
   async function loadDashboard() {
@@ -237,7 +334,6 @@
         <tr>
           <td class="small">${a.last_seen ? new Date(a.last_seen).toLocaleString() : "-"}</td>
 
-          <!-- ✅ Title tıklanınca detay -->
           <td>
             <a class="titleLink" href="/alerts/${a.id}">
               <b>${esc(a.title || "-")}</b>
@@ -256,30 +352,94 @@
     });
   }
 
+  // ✅ Dashboard: note ile ack/close
+  function getNote(){
+    const s = (dashNoteEl.value || "").trim();
+    return s.length ? s : null;
+  }
+
   async function ack(id) {
-    await fetchJSON(`/api/alerts/${id}/ack`, { method: "POST" });
-    loadDashboard();
+    try{
+      const note = getNote();
+      await fetchJSON(`/api/alerts/${id}/ack`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ note })
+      });
+      setDashNoteStatus("Ack OK", true);
+      loadDashboard();
+    }catch(e){
+      setDashNoteStatus("Ack hata: " + e.message, false);
+      alert(e.message);
+    }
   }
 
   async function closeAlert(id) {
-    await fetchJSON(`/api/alerts/${id}/close`, { method: "POST" });
-    loadDashboard();
+    try{
+      const note = getNote();
+      await fetchJSON(`/api/alerts/${id}/close`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ note })
+      });
+      setDashNoteStatus("Close OK", true);
+      loadDashboard();
+    }catch(e){
+      setDashNoteStatus("Close hata: " + e.message, false);
+      alert(e.message);
+    }
   }
 
   refreshBtn.onclick = loadDashboard;
 
+  async function runRules(){
+    rrRunBtn.disabled = true;
+    setRunnerStatus("çalışıyor...", true);
+
+    const minutes = parseInt(rrMinutesEl.value || "10", 10);
+    const useLatest = rrUseLatestEl.checked;
+    const debug = rrDebugEl.checked;
+
+    const qs = new URLSearchParams();
+    if (useLatest) qs.set("use_latest","1");
+    if (debug) qs.set("debug","1");
+
+    try{
+      const res = await fetchJSON(`/api/alerts/run?${qs.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutes })
+      });
+
+      rrSummaryEl.style.display = "";
+      rrTotalEl.textContent = res.total_events_in_window ?? "-";
+
+      const eng = res.engine || {};
+      rrRulesEl.textContent = eng.rules_checked ?? "-";
+      rrMatchesEl.textContent = eng.matches_found ?? "-";
+      rrCreatedEl.textContent = eng.alerts_created ?? "-";
+      rrErrorsEl.textContent = eng.errors ?? "-";
+
+      rrRawEl.textContent = JSON.stringify(res, null, 2);
+
+      setRunnerStatus("ok", true);
+      await loadDashboard();
+    }catch(e){
+      setRunnerStatus("hata: " + e.message, false);
+      alert(e.message);
+    }finally{
+      rrRunBtn.disabled = false;
+    }
+  }
+
+  rrRunBtn.onclick = runRules;
+
   runOnceBtn.onclick = async () => {
     runOnceStatus.textContent = "çalışıyor...";
     try {
-      const r = await fetchJSON(`/api/alerts/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minutes: 10 })
-      });
-      runOnceStatus.textContent = "ok (fired=" + (r.fired ? r.fired.length : 0) + ")";
-      loadDashboard();
+      await runRules();
+      runOnceStatus.textContent = "ok";
     } catch (e) {
-      alert(e.message);
       runOnceStatus.textContent = "hata";
     }
   };

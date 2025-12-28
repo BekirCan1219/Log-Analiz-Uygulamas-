@@ -25,9 +25,6 @@
   .dot.good { background:#3ddc97; }
   .dot.warn { background:#ffcc66; }
   .dot.bad  { background:#ff6b6b; }
-  button { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  input { background:#0f1626; color:#e6e6e6; border:1px solid #2b3b60; border-radius:10px; padding:8px 10px; width:100%; }
   table { width:100%; border-collapse:collapse; }
   th,td { border-bottom:1px solid #22314f; padding:10px 8px; text-align:left; font-size:13px; vertical-align:top; }
   th { color:#9aa4b2; font-size:12px; }
@@ -35,9 +32,6 @@
   .pre { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
          background:#0f1626; border:1px solid #2b3b60; border-radius:12px; padding:10px; font-size:12px; }
   .details { display:none; }
-  .statusBox { display:none; margin-top:10px; padding:10px 12px; border-radius:12px;
-              border:1px solid rgba(154,221,255,.25); background: rgba(154,221,255,.08); color:#d8f4ff; }
-  .statusBox.error { border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.08); color:#ffd2d2; }
 </style>
 </head>
 <body>
@@ -96,25 +90,14 @@
         </div>
       </div>
 
-      <div id="adminActions" style="margin-top:14px; display:none;">
-        <div class="row">
-          <div style="flex:1; min-width:260px;">
-            <div class="k">Note (optional)</div>
-            <input id="note" placeholder="ack/close notu...">
-          </div>
-          <div style="display:flex; gap:10px; align-items:flex-end;">
-            <button id="btnAck">Ack</button>
-            <button id="btnClose">Close</button>
-          </div>
-        </div>
-        <div id="statusBox" class="statusBox"></div>
-      </div>
+      <!-- ✅ adminActions BLOĞU KALDIRILDI -->
     </div>
 
+    <!-- ✅ Audit Trail kartı da kaldırıldı (admin aksiyonları yoksa anlamı kalmıyor) -->
     <div class="card">
-      <h3 style="margin:0 0 8px;">Audit Trail</h3>
-      <div class="muted" style="margin-bottom:10px;">Ack / Close geçmişi</div>
-      <div id="audit" class="muted">-</div>
+      <h3 style="margin:0 0 8px;">Details</h3>
+      <div class="muted" style="margin-bottom:10px;">Alert details JSON</div>
+      <div id="detailsJson" class="pre">-</div>
     </div>
   </div>
 
@@ -160,13 +143,6 @@
     return "bad";
   }
 
-  function setStatus(msg, isErr=false){
-    const box = document.getElementById("statusBox");
-    box.style.display = "block";
-    box.className = "statusBox" + (isErr ? " error" : "");
-    box.textContent = msg;
-  }
-
   async function fetchJSON(url, opts={}){
     const r = await fetch(url, { credentials:"include", ...opts });
     const t = await r.text();
@@ -177,36 +153,6 @@
       throw new Error(`HTTP ${r.status} - ${msg}`);
     }
     return j;
-  }
-
-  async function loadRole(){
-    try{
-      const me = await fetchJSON("/auth/me");
-      const role = me.user?.role;
-      if(role === "admin"){
-        document.getElementById("adminActions").style.display = "";
-      }
-    }catch(e){
-      // login yoksa backend zaten pages_controller ile /login'e atıyor
-    }
-  }
-
-  function renderAudit(details){
-    const host = document.getElementById("audit");
-    const audit = details?.audit;
-    if(!Array.isArray(audit) || audit.length === 0){
-      host.textContent = "Audit kaydı yok.";
-      return;
-    }
-    host.innerHTML = audit.map(a => {
-      const ts = a.ts || "-";
-      const action = a.action || "-";
-      const note = (a.note || "").trim();
-      return `<div style="padding:10px; border:1px solid #22314f; border-radius:12px; margin-bottom:8px; background:#0f1626;">
-        <div><b>${action.toUpperCase()}</b> <span class="muted">${ts}</span></div>
-        <div class="muted" style="margin-top:6px;">${note ? note : "(no note)"}</div>
-      </div>`;
-    }).join("");
   }
 
   function rowHtml(e){
@@ -284,7 +230,8 @@
     const stDot = document.getElementById("stDot");
     stDot.className = "dot " + stDotClass(a.status);
 
-    renderAudit(a.details);
+    // details json göster
+    document.getElementById("detailsJson").textContent = JSON.stringify(a.details ?? {}, null, 2);
 
     const tb = document.getElementById("events");
     const events = res.related_events || [];
@@ -297,33 +244,7 @@
     wireExpand();
   }
 
-  async function ackClose(kind){
-    const note = document.getElementById("note").value || "";
-    const btnAck = document.getElementById("btnAck");
-    const btnClose = document.getElementById("btnClose");
-    btnAck.disabled = true;
-    btnClose.disabled = true;
-
-    try{
-      await fetchJSON(`/api/alerts/${ALERT_ID}/${kind}`,{
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ note })
-      });
-      setStatus(`OK: ${kind} işlemi başarılı`);
-      await load();
-    }catch(e){
-      setStatus(e.message, true);
-    }finally{
-      btnAck.disabled = false;
-      btnClose.disabled = false;
-    }
-  }
-
-  document.getElementById("btnAck").addEventListener("click", ()=> ackClose("ack"));
-  document.getElementById("btnClose").addEventListener("click", ()=> ackClose("close"));
-
-  loadRole().then(load).catch(e => console.error(e));
+  load().catch(e => console.error(e));
 </script>
 
 </body>

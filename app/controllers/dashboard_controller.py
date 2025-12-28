@@ -21,3 +21,7 @@ def rules_page():
 @dashboard_bp.get("/alerts")
 def alerts_page():
     return render_template("alerts.html")
+
+@dashboard_bp.get("/alerts/<int:alert_id>")
+def alert_detail_page(alert_id):
+    return render_template("alert_detail.html", alert_id=alert_id)
